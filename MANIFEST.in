@@ -1,3 +1,4 @@
+include RELEASE_NOTES.txt
 include README.txt
 include setup.py
 include VERSION
