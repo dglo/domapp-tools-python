@@ -6,14 +6,11 @@
 
 from __future__ import generators
 import time, threading, os, sys
-from exc_string import *
-import os.path
-from dor import Driver
 from re import search, sub
-from domapp import *
-import optparse
-from minitimer import MiniTimer
+from domapptools import *
 from math import sqrt
+import os.path
+import optparse
 
 def SNClockOk(clock, prevClock, bins, prevBins):
     DT = 65536

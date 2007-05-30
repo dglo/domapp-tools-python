@@ -1,3 +1,8 @@
+V00-00-03 5-30-07 john@mail.npxdesigns.com:
+Move files into domapptools package
+
+V00-00-02 5-30-07 john@mail.npxdesigns.com:
+Test out release procedure
+
 V00-00-01 5-30-07 john@mail.npxdesigns.com:
 First version
-
