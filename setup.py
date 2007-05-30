@@ -8,7 +8,7 @@ from distutils.core import setup
 from re import sub
 
 def getDomappToolsVersion():
-    f = file("domapp-tools-version","r")
+    f = file("VERSION","r")
     version = f.readline()
     version = version.rstrip()
     version = sub('-', '.', version)
