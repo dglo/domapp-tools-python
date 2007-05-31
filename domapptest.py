@@ -697,9 +697,9 @@ class TestingSet:
                                                                     self.numfailed,
                                                                     self.numtests)
 
-# FIXME - updated for new pythonic package distribution def getDomappToolsVersion():
-#    f = open("/usr/local/share/domapp-tools-version")
-#    return sub(r'\n','', f.readline())
+def getDomappToolsPythonVersion():
+    f = open("/usr/local/share/domapp-tools-python-version")
+    return sub(r'\n','', f.readline())
 
 def main():
     p = optparse.OptionParser()
@@ -716,7 +716,7 @@ def main():
                    doHVTests        = False)
     opt, args = p.parse_args()
 
-    # print "domapp-tools revision: %s" % getDomappToolsVersion()
+    print "domapp-tools-python revision: %s" % getDomappToolsPythonVersion()
     
     dor = Driver()
     print "dor-driver release: %s" % dor.release
