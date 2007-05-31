@@ -3,4 +3,3 @@ include README.txt
 include setup.py
 include VERSION
 recursive-include domapptools *
-recursive-include scripts *
