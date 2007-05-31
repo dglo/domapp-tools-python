@@ -255,7 +255,7 @@ class Driver:
                         f = file(os.path.join(self.path(c, p, d),
                                               'is-communicating'), 'r')
                         try:
-                            f.read().index('not')
+                            f.read().index('NOT')
                         except ValueError:
                             devfile = makedev(int(c), int(p), d)
                             dev = file(devfile, 'w')
@@ -270,10 +270,29 @@ class Driver:
                 if p.plugged == 1 and p.powered == 1:
                     for d in ('A', 'B'):
                         domid = self.get_dom_id(c, p, d)
-                        if domid:
+                        if domid is not None:
                             self.doms[domid] = (int(c), int(p), d)
         return self.doms
 
+    def get_communicating_doms(self):
+        """
+        Find all communicating DOMs, whether in IceBoot or Configboot
+        Have to use c,w,d indexing because domid is not defined in configboot
+        """
+        doms = []
+        for c in self.cards:
+            for p in c.pairs:
+                if p.plugged == 1 and p.powered == 1:
+                    for d in ('A', 'B'):
+                        f = file(os.path.join(self.path(c, p, d),
+                                              'is-communicating'), 'r')
+                        try:
+                            f.read().index('NOT')
+                        except ValueError:
+                            doms.append((int(c), int(p), d))
+                        
+        return doms
+    
 class Power:
     """
     This is an old interface - users are strongly discouraged
