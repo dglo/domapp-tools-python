@@ -7,7 +7,9 @@
 from __future__ import generators
 import time, threading, os, sys
 from re import search, sub
-from domapptools import *
+from domapptools.dor import *
+from domapptools.exc_string import exc_string
+from domapptools.domapp import *
 from math import sqrt
 import os.path
 import optparse
@@ -695,9 +697,9 @@ class TestingSet:
                                                                     self.numfailed,
                                                                     self.numtests)
 
-def getDomappToolsVersion():
-    f = open("/usr/local/share/domapp-tools-version")
-    return sub(r'\n','', f.readline())
+# FIXME - updated for new pythonic package distribution def getDomappToolsVersion():
+#    f = open("/usr/local/share/domapp-tools-version")
+#    return sub(r'\n','', f.readline())
 
 def main():
     p = optparse.OptionParser()
@@ -714,7 +716,7 @@ def main():
                    doHVTests        = False)
     opt, args = p.parse_args()
 
-    print "domapp-tools revision: %s" % getDomappToolsVersion()
+    # print "domapp-tools revision: %s" % getDomappToolsVersion()
     
     dor = Driver()
     print "dor-driver release: %s" % dor.release

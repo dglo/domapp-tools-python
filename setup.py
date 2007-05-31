@@ -23,5 +23,4 @@ setup(name="domapp-tools-python",
       author_email="john@mail.npxdesigns.com",
       url="http://www.npxdesigns.com",
       packages=["domapptools"],
-      scripts=["domapptools/domapptest.py"],
       )
