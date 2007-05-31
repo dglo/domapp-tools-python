@@ -23,6 +23,6 @@ setup(name="domapp-tools-python",
       author_email="john@mail.npxdesigns.com",
       url="http://www.npxdesigns.com",
       packages=["domapptools"],
-      scripts=["domapptest.py"],
+      scripts=["domapptest.py", "DOMPrep.py"],
       data_files=[("/usr/local/share", ["domapp-tools-python-version"])]
       )
