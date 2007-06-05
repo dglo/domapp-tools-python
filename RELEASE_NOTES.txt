@@ -1,3 +1,8 @@
+Issues:
+0001511: DOMPrep.py - tolerate failures to open dev file
+==============================================================
+
+
 V00-01-00 5-31-07 John Jacobsen john@mail.npxdesigns.com
 
 First working version, same functionality as the pythonic part of 

@@ -19,7 +19,15 @@ def prepDom(c,w,d):
     """
     global numInIceboot
     dom = MiniDor(c,w,d)
-    dom.open()
+    try:
+        dom.open()
+    except KeyboardInterrupt, k:
+        print "(%s%s%s transition to iceboot FAILED - interrupted)" % (c,w,d)
+        return
+    except Exception, e:
+        # if open fails, just softboot it to try to get it back to a good state
+        pass
+        
     if dom.isInConfigboot() and not dom.configbootToIceboot():
             print "(%s%s%s transition to iceboot FAILED)" % (c,w,d)
     else:
