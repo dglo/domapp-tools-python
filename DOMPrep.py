@@ -67,7 +67,7 @@ def main():
     for dom in domList:
         try:
             threads[dom].join()
-        except KeyboardException:
+        except KeyboardInterrupt:
             raise SystemExit
         except Exception, e:
             print exc_string()
