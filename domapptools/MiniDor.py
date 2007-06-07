@@ -79,16 +79,22 @@ class MiniDor:
         except Exception, e:
             return (False, exc_string())
         return (True, "")
-    
-    def isInIceboot(self):         return self.se("\r\n", ">", 3000)[0]
-    def isInConfigboot(self):      return self.se("\r\n", "#", 3000)[0]
-    def configbootToIceboot(self): return self.se("r",    ">", 5000)[0]
-    def icebootToConfigboot(self): return self.se("boot-serial reboot\r\n", "#", 5000)[0]
-    def icebootToDomapp(self):
+
+    # Versions which return both success and error message
+    def isInIceboot2(self):         return self.se("\r\n", ">", 3000)
+    def isInConfigboot2(self):      return self.se("\r\n", "#", 3000)
+    def configbootToIceboot2(self): return self.se("r",    ">", 5000)
+    def icebootToConfigboot2(self): return self.se("boot-serial reboot\r\n", "#", 5000)
+    def icebootToDomapp2(self):
         ok, txt = self.se("domapp\r\n", "domapp", 5000)
         if ok: time.sleep(3)
         return (ok, txt)
 
+    def isInIceboot(self):         return self.isInIceboot2()[0]
+    def isInConfigboot(self):      return self.isInConfigboot2()[0]
+    def configbootToIceboot(self): return self.configbootToIceboot2[0]
+    def icebootToConfigboot(self): return self.icebootToConfigboot2[0]
+    def icebootToDomapp(self):     return self.icebootToDomapp[0]
 
 def main():
     dom00a = MiniDor(0,0,'A')

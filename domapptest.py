@@ -22,10 +22,7 @@ def SNClockOk(clock, prevClock, bins, prevBins):
     if clock != prevClock + prevBins*DT: return False
     return True
 
-class ExpectStringNotFoundException(Exception): pass
 class WriteTimeoutException(Exception):         pass
-
-EAGAIN   = 11    
 
 class MalformedDeltaCompressedHitBuffer(Exception): pass
 
@@ -117,13 +114,13 @@ class ConfigbootToIceboot(DOMTest):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_CONFIGBOOT, end=DOMTest.STATE_ICEBOOT)
     def run(self, fd):
-        ok, txt = self.dor.configbootToIceboot()
+        ok, txt = self.dor.configbootToIceboot2()
         if not ok:
             self.result = "FAIL"
             self.debugMsgs.append("Could not transition into iceboot")
             self.debugMsgs.append(txt)
         else:
-            ok, txt = self.dor.isInIceboot()
+            ok, txt = self.dor.isInIceboot2()
             if not ok:
                 self.result = "FAIL"
                 self.debugMsgs.append("check for iceboot prompt failed")
@@ -137,7 +134,7 @@ class DomappToIceboot(DOMTest):
                          start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_ICEBOOT)
     def run(self, fd):
         self.dor.softboot()
-        ok, txt = self.dor.isInIceboot()
+        ok, txt = self.dor.isInIceboot2()
         if not ok:
             self.result = "FAIL"
             self.debugMsgs.append("check for iceboot prompt failed")
@@ -150,7 +147,7 @@ class IcebootToDomapp(DOMTest):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_DOMAPP)
     def run(self, fd):
-        ok, txt = self.dor.icebootToDomapp()
+        ok, txt = self.dor.icebootToDomapp2()
         if not ok:        
             self.result = "FAIL"
             self.debugMsgs.append("could not transition into domapp")
@@ -164,7 +161,7 @@ class CheckIceboot(DOMTest):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ICEBOOT)
     def run(self, fd):
-        ok, txt = self.dor.isInIceboot()
+        ok, txt = self.dor.isInIceboot2()
         if not ok:
             self.result = "FAIL"
             self.debugMsgs.append("check for iceboot prompt failed")
@@ -177,13 +174,13 @@ class IcebootToConfigboot(DOMTest):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_CONFIGBOOT)
     def run(self, fd):
-        ok, txt = self.dor.icebootToConfigboot()
+        ok, txt = self.dor.icebootToConfigboot2()
         if not ok:
             self.result = "FAIL"
             self.debugMsgs.append("could not transition into configboot")
             self.debugMsgs.append(txt)
         else:
-            ok, txt =  self.dor.isInConfigboot()
+            ok, txt =  self.dor.isInConfigboot2()
             if not ok:
                 self.result = "FAIL"
                 self.debugMsgs.append("check for iceboot prompt failed")
@@ -196,7 +193,7 @@ class CheckConfigboot(DOMTest):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_CONFIGBOOT, end=DOMTest.STATE_CONFIGBOOT)
     def run(self, fd):
-        ok, txt = self.dor.isInConfigboot()
+        ok, txt = self.dor.isInConfigboot2()
         if not ok:
             self.result = "FAIL"
             self.debugMsgs.append("check for iceboot prompt failed")
