@@ -79,7 +79,7 @@ class DOMTest:
     STATE_ECHO       = "em"
     STATE_UNKNOWN    = "??"
     
-    def __init__(self, card, wire, dom, dor, start=STATE_ICEBOOT, end=STATE_ICEBOOT):
+    def __init__(self, card, wire, dom, dor, start=STATE_ICEBOOT, end=STATE_ICEBOOT, runLength=None):
         self.card       = card
         self.wire       = wire
         self.dom        = dom
@@ -87,12 +87,13 @@ class DOMTest:
         self.startState = start
         self.endState   = end
 
-        self.runLength  = 10
+        self.runLength  = runLength
         self.debugMsgs  = []
         self.result     = None
         self.summary    = ""
-        
-    def setRunLength(self, l): self.runLength = l
+
+    def setRunLength(self, l):
+        self.runLength = l
 
     def getDebugTxt(self):
         str = ""
@@ -110,6 +111,7 @@ class DOMTest:
     def run(self, fd): pass
 
 class ConfigbootToIceboot(DOMTest):
+    "Make sure transition from configboot to iceboot succeeds"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_CONFIGBOOT, end=DOMTest.STATE_ICEBOOT)
@@ -129,6 +131,7 @@ class ConfigbootToIceboot(DOMTest):
                 self.result = "PASS"
                         
 class DomappToIceboot(DOMTest):
+    "Make sure (softboot) transition from domapp to iceboot succeeds"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_ICEBOOT)
@@ -143,6 +146,7 @@ class DomappToIceboot(DOMTest):
             self.result = "PASS"
 
 class IcebootToDomapp(DOMTest):
+    "Make sure transition from iceboot to domapp succeeds"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_DOMAPP)
@@ -157,6 +161,7 @@ class IcebootToDomapp(DOMTest):
             self.result = "PASS"
 
 class CheckIceboot(DOMTest):
+    "Make sure I'm in iceboot when I think I should be"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ICEBOOT)
@@ -170,6 +175,7 @@ class CheckIceboot(DOMTest):
             self.result = "PASS"
             
 class IcebootToConfigboot(DOMTest):
+    "Make sure transition from iceboot to configboot succeeds"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_CONFIGBOOT)
@@ -189,6 +195,7 @@ class IcebootToConfigboot(DOMTest):
                 self.result = "PASS"
 
 class CheckConfigboot(DOMTest):
+    "Check that I'm really in configboot when I think I am"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_CONFIGBOOT, end=DOMTest.STATE_CONFIGBOOT)
@@ -202,6 +209,7 @@ class CheckConfigboot(DOMTest):
             self.result = "PASS"
 
 class GetDomappRelease(DOMTest):
+    "Make sure I can ask domapp for its release string"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP)
@@ -215,6 +223,7 @@ class GetDomappRelease(DOMTest):
             self.debugMsgs.append(exc_string())
 
 class DOMIDTest(DOMTest):
+    "Make sure I can get DOM ID from domapp"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP)
@@ -291,7 +300,7 @@ class PedestalStabilityTest(DOMTest):
     "Measure pedestal stability by taking an average over several tries"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
-                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP)
+                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP, runLength=10)
         
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)        
@@ -390,9 +399,10 @@ class PedestalStabilityTest(DOMTest):
             return
         
 class DeltaCompressionBeaconTest(DOMTest):
+    "Make sure delta-compressed beacons have all four ATWD channels read out"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
-                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP)
+                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP, runLength=10)
 
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
@@ -451,8 +461,10 @@ class DeltaCompressionBeaconTest(DOMTest):
             self.debugMsgs.append(getLastMoniMsgs(domapp))
             
 class SNTest(DOMTest):
+    "Make sure no gaps are present in SN data"
     def __init__(self, card, wire, dom, dor):
-        DOMTest.__init__(self, card, wire, dom, dor, start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP)
+        DOMTest.__init__(self, card, wire, dom, dor,
+                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP, runLength=10)
 
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
@@ -524,17 +536,32 @@ class SNTest(DOMTest):
             self.debugMsgs.append("END RUN FAILED: %s" % exc_string())
             self.debugMsgs.append(getLastMoniMsgs(domapp))
 
+class TestNotFoundException(Exception): pass
+
 class TestingSet:
     "Class for running multiple tests on a group of DOMs in parallel"
-    def __init__(self, domDict, testNameList, stopOnFail=False):
-        self.domDict     = domDict
-        self.testList    = testNameList
-        self.threads     = {}
-        self.numpassed   = 0
-        self.numfailed   = 0
-        self.numtests    = 0
-        self.counterLock = threading.Lock()
-        self.stopOnFail  = stopOnFail
+    def __init__(self, domDict, stopOnFail=False):
+        self.domDict      = domDict
+        self.testList     = []
+        self.durationDict = {}
+        self.threads      = {}
+        self.numpassed    = 0
+        self.numfailed    = 0
+        self.numtests     = 0
+        self.counterLock  = threading.Lock()
+        self.stopOnFail   = stopOnFail
+
+    def add(self, test, duration=None):
+        self.testList.append(test)
+        self.durationDict[test] = duration
+
+    def setDuration(self, testName, duration):
+        found = False
+        for t in self.testList:
+            if t.__name__ == testName:
+                self.durationDict[t] = duration
+                found = True
+        if not found: raise TestNotFoundException("test name %s not defined" % testName)
         
     def cycle(self, testList, startState, c, w, d):
         """
@@ -572,7 +599,11 @@ class TestingSet:
         dor = MiniDor(c, w, d)
         dor.open()
         for testName in self.testList:
-            testObjList.append(testName(c, w, d, dor))
+            t = testName(c,w,d,dor)
+            # Set duration which may have been set explicitly by user:
+            if self.durationDict[testName]:
+                t.setRunLength(self.durationDict[testName])
+            testObjList.append(t)
         for test in self.cycle(testObjList, startState, c, w, d):
             test.run(dor.fd)
             if(test.startState != test.endState): # If state change, flush buffers etc. to get clean IO
@@ -582,8 +613,11 @@ class TestingSet:
             sf = False
             #### LOCK - have to protect shared counters, as well as TTY...
             self.counterLock.acquire()
-            print "%s%s%s %s->%s %s: %s %s" % (c,w,d, test.startState,
-                                                     test.endState, test.name(), test.result, test.summary)
+            runLenStr = ""
+            if test.runLength: runLenStr = "%d sec " % test.runLength
+            print "%s%s%s %s->%s %s%s: %s %s" % (c,w,d, test.startState,
+                                                      test.endState, runLenStr,
+                                                      test.name(), test.result, test.summary)
             if test.result == "PASS":
                 self.numpassed += 1
             else:
@@ -627,7 +661,6 @@ def getDomappToolsPythonVersion():
 
 def main():
     p = optparse.OptionParser()
-
     p.add_option("-s", "--stop-fail",
                  action="store_true",
                  dest="stopFail",     help="Stop at first failure for each DOM")
@@ -636,17 +669,21 @@ def main():
                  action="store_true",
                  dest="doHVTests",    help="Perform HV tests")
 
+    p.add_option("-l", "--list-tests",
+                 action="store_true",
+                 dest="listTests",    help="List tests to be performed")
+
+    p.add_option("-d", "--set-duration",
+                 action="append",     type="string",    nargs=2,
+                 dest="setDuration",  help="Set duration in secs of a test, " + \
+                                           "e.g. '-d SNTest 1000' (repeatable)")
+    
     p.set_defaults(stopFail         = False,
-                   doHVTests        = False)
+                   doHVTests        = False,
+                   setDuration      = None,
+                   listTests        = False)
     opt, args = p.parse_args()
 
-    print "domapp-tools-python revision: %s" % getDomappToolsPythonVersion()
-    
-    dor = Driver()
-    print "dor-driver release: %s" % dor.release
-    dor.enable_blocking(0)
-    domDict = dor.get_active_doms()
-    
     startState = DOMTest.STATE_ICEBOOT # FIXME: what if it's not?
     
     ListOfTests = [IcebootToConfigboot, CheckConfigboot, ConfigbootToIceboot,
@@ -655,10 +692,33 @@ def main():
                    SNTest, 
                    DomappToIceboot]
 
+    dor = Driver()
+    dor.enable_blocking(0)
+    domDict = dor.get_active_doms()
+    
+    testSet = TestingSet(domDict, opt.stopFail)
+    for t in ListOfTests:
+        testSet.add(t)
+    for (testName, dur) in opt.setDuration:
+        try:
+            testSet.setDuration(testName, int(dur))
+        except Exception, e:
+            print "Could not set duration for %s to '%s' seconds: %s" % (testName, dur, e)
+            raise SystemExit
+
+    if opt.listTests:
+        for t in ListOfTests:
+            print t.__name__
+            if t.__doc__:
+                print '\t', t.__doc__
+        raise SystemExit
+    
     if opt.doHVTests:
         ListOfTests.append(PedestalStabilityTest)
+
+    print "domapp-tools-python revision: %s" % getDomappToolsPythonVersion()
+    print "dor-driver release: %s" % dor.release
     
-    testSet = TestingSet(domDict, ListOfTests, opt.stopFail)
     testSet.go()
     print testSet.summary()
     
