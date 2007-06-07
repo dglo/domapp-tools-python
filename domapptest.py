@@ -699,12 +699,13 @@ def main():
     testSet = TestingSet(domDict, opt.stopFail)
     for t in ListOfTests:
         testSet.add(t)
-    for (testName, dur) in opt.setDuration:
-        try:
-            testSet.setDuration(testName, int(dur))
-        except Exception, e:
-            print "Could not set duration for %s to '%s' seconds: %s" % (testName, dur, e)
-            raise SystemExit
+    if opt.setDuration:
+        for (testName, dur) in opt.setDuration:
+            try:
+                testSet.setDuration(testName, int(dur))
+            except Exception, e:
+                print "Could not set duration for %s to '%s' seconds: %s" % (testName, dur, e)
+                raise SystemExit
 
     if opt.listTests:
         for t in ListOfTests:
@@ -716,7 +717,13 @@ def main():
     if opt.doHVTests:
         ListOfTests.append(PedestalStabilityTest)
 
-    print "domapp-tools-python revision: %s" % getDomappToolsPythonVersion()
+    revTxt = "UNKNOWN/head"
+    try:
+        revTxt = getDomappToolsPythonVersion() # Can fail if not an official installation
+    except:
+        pass
+    
+    print "domapp-tools-python revision: %s" % revTxt
     print "dor-driver release: %s" % dor.release
     
     testSet.go()
