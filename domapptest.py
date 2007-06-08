@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 # domapptest.py
-# John Jacobsen, NPX Designs, Inc., jacobsen\@npxdesigns.com
+# John Jacobsen, NPX Designs, Inc., john@mail.npxdesigns.com
 # Started: Wed May  9 21:57:21 2007
 
 from __future__ import generators
@@ -12,65 +12,13 @@ from domapptools.dor import *
 from domapptools.exc_string import exc_string
 from domapptools.domapp import *
 from domapptools.MiniDor import *
+from domapptools.DeltaHit import *
 
 from math import sqrt
 import os.path
 import optparse
 
-def SNClockOk(clock, prevClock, bins, prevBins):
-    DT = 65536
-    if clock != prevClock + prevBins*DT: return False
-    return True
-
-class WriteTimeoutException(Exception):         pass
-
-class MalformedDeltaCompressedHitBuffer(Exception): pass
-
-class DeltaHit:
-    def __init__(self, hitbuf):
-        self.words   = unpack('<2i', hitbuf[0:8])
-        iscompressed = (self.words[0] & 0x80000000) >> 31
-        if not iscompressed:
-            raise MalformedDeltaCompressedHitBuffer("no compression bit found")
-        self.hitsize = self.words[0] & 0x7FF
-        self.natwdch = (self.words[0] & 0x3000) >> 12
-        self.trigger = (self.words[0] & 0x7ffe0000) >> 18
-        self.atwd_avail = ((self.words[0] & 0x4000) != 0)
-        self.atwd_chip  = (self.words[0] & 0x0800) >> 11
-        self.fadc_avail = ((self.words[0] & 0x8000) != 0)
-        if self.trigger & 0x01: self.is_spe    = True
-        else:                   self.is_spe    = False
-        if self.trigger & 0x02: self.is_mpe    = True
-        else:                   self.is_mpe    = False
-        if self.trigger & 0x04: self.is_beacon = True
-        else:                   self.is_beacon = False
-
-    def __repr__(self):
-        return """
-W0 0x%08x W1 0x%08x
-Hit size = %4d     ATWD avail   = %4d     FADC avail = %4d
-A/B      = %4d     ATWD#        = %4d     Trigger word = 0x%04x
-"""                         % (self.words[0], self.words[1], self.hitsize,
-                               self.atwd_avail, self.fadc_avail,
-                               self.atwd_chip, self.natwdch, self.trigger)
-
-class DeltaHitBuf:
-    def __init__(self, hitdata):
-        if len(hitdata) < 8: raise MalformedDeltaCompressedHitBuffer()
-        junk, nb   = unpack('>HH', hitdata[0:4])
-        junk, tmsb = unpack('>HH', hitdata[4:8])
-        nb -= 8
-        # print "len %d tmsb %d" % (nb, tmsb)
-        if nb <= 0: raise MalformedDeltaCompressedHitBuffer()
-        self.payload = hitdata[8:]
-        
-    def next(self):
-        rest = self.payload
-        while(len(rest) > 8):
-            words = unpack('<2i', rest[0:8])
-            hitsize = words[0] & 0x7FF
-            yield DeltaHit(rest[0:hitsize])
-            rest = rest[hitsize:]
+class WriteTimeoutException(Exception):             pass
 
 class DOMTest:
     STATE_ICEBOOT    = "ib"
@@ -208,33 +156,60 @@ class CheckConfigboot(DOMTest):
         else:
             self.result = "PASS"
 
-class GetDomappRelease(DOMTest):
-    "Make sure I can ask domapp for its release string"
+############################## DOMAPP TEST BASE CLASSES ############################
+            
+class QuickDOMAppTest(DOMTest):
+    "Short tests specific to domapp - no run length specified"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP)
-    def run(self, fd):
-        domapp = DOMApp(self.card, self.wire, self.dom, fd)
-        try:
-            self.summary = domapp.getDomappVersion()
-            self.result = "PASS"
-        except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append(exc_string())
+    
+class DOMAppTest(DOMTest):
+    "Variable duration tests specific to domapp - run length is specified"
+    def __init__(self, card, wire, dom, dor):
+        DOMTest.__init__(self, card, wire, dom, dor,
+                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP, runLength=10)
+        
+    def SNClockOk(self, clock, prevClock, bins, prevBins):
+        DT = 65536
+        if clock != prevClock + prevBins*DT: return False
+        return True
 
-class DOMIDTest(DOMTest):
-    "Make sure I can get DOM ID from domapp"
-    def __init__(self, card, wire, dom, dor):
-        DOMTest.__init__(self, card, wire, dom, dor,
-                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP)
-    def run(self, fd):
-        domapp = DOMApp(self.card, self.wire, self.dom, fd)
-        try:
-            self.summary = domapp.getMainboardID()
-            self.result = "PASS"
-        except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append(exc_string())
+    def checkSNdata(self, sndata, prevClock, prevBins):
+        """
+        Check sndata for correct time structure with respect to previous clock and # of bins
+        read out previously; return updated clock, #bins values
+        """
+        if sndata      == None: return (prevClock, prevBins)
+        if len(sndata) == 0:    return (prevClock, prevBins)
+        if len(sndata) < 10:
+            raise Exception("SN DATA CHECK: %d bytes" % len(sndata))
+        bytes, fmtid, t5, t4, t3, t2, t1, t0 = unpack('>hh6B', sndata[0:10])
+        clock  = ((((t5 << 8L | t4) << 8L | t3) << 8L | t2) << 8L | t1) << 8L | t0
+        scalers = unpack('%dB' % (len(sndata) - 10), sndata[10:])
+        bins    = len(scalers)
+        if prevBins and not self.SNClockOk(clock, prevClock, bins, prevBins):
+            raise Exception("CLOCK CHECK: %d %d %d->%d %x->%x" % (bytes, fmtid, prevBins,
+                                                                  bins, prevClock, clock))
+        return (clock, bins)
+
+class DOMAppHVTest(DOMAppTest):
+    "Subclass of DOMTest with an HV-setting method"
+    def setHV(self, domapp, hv):
+        HV_TOLERANCE = 20   # HV must be correct to 10 Volts (20 units)
+        domapp.enableHV()
+        domapp.setHV(hv*2)
+        time.sleep(2)
+        hvadc, hvdac = domapp.queryHV()
+        self.debugMsgs.append("HV: read %d V (ADC) %d V (DAC)" % (hvadc/2,hvdac/2))
+        if abs(hvadc-hv*2) > HV_TOLERANCE:
+            raise Exception("HV deviates too much from set value!")
+        
+    def turnOffHV(self, domapp):
+        domapp.setHV(0)
+        domapp.disableHV()
+
+####################### HELPER METHODS (move into domapp base classes?) ####################
 
 def setDAC(domapp, dac, val): domapp.writeDAC(dac, val)
 def setDefaultDACs(domapp):
@@ -296,12 +271,114 @@ def getLastMoniMsgs(domapp):
         ret +=("GET MONI DATA FAILED: %s" % exc_string())
     return ret
 
-class PedestalStabilityTest(DOMTest):
+
+################################### SPECIFIC TESTS ###############################
+
+class GetDomappRelease(QuickDOMAppTest):
+    "Make sure I can ask domapp for its release string"
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            self.summary = domapp.getDomappVersion()
+            self.result = "PASS"
+        except Exception, e:
+            self.result = "FAIL"
+            self.debugMsgs.append(exc_string())
+
+class DOMIDTest(QuickDOMAppTest):
+    "Make sure I can get DOM ID from domapp"
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            self.summary = domapp.getMainboardID()
+            self.result = "PASS"
+        except Exception, e:
+            self.result = "FAIL"
+            self.debugMsgs.append(exc_string())
+
+
+class SNDeltaSPEHitTest(DOMAppHVTest):
+    "Collect both SPE and SN data, make sure there are no gaps in SN data"
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)        
+        self.result = "PASS"
+        NOMINAL_HV_VOLTS = 900 # Is this the best value?
+        try:
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.setTriggerMode(2)
+            domapp.selectMUX(255)
+            domapp.setMonitoringIntervals()
+            self.setHV(domapp, NOMINAL_HV_VOLTS)
+            domapp.setPulser(mode=BEACON, rate=4)
+            domapp.enableSN(6400, 0)
+            domapp.setMonitoringIntervals()
+            domapp.setDataFormat(2)
+            domapp.setCompressionMode(2)            
+            domapp.startRun()
+
+            t = MiniTimer(self.runLength*1000)
+            snTimer = MiniTimer(1000) # Collect SN data at 1 sec intervals
+            nbDelta = 0
+            prevBins, prevClock = None, None
+            
+            while not t.expired():
+
+                # Moni data
+                self.debugMsgs.append(getLastMoniMsgs(domapp))
+
+                # Hit (delta compressed) data
+                try:
+                    hitdata = domapp.getWaveformData()
+                    if len(hitdata) > 0:
+                        nbDelta += len(hitdata)
+                        hitBuf = DeltaHitBuf(hitdata) # Does basic integrity check
+                except Exception, e:
+                    self.result = "FAIL"
+                    self.debugMsgs.append("GET WAVEFORM DATA FAILED: %s" % exc_string())
+                    self.debugMsgs.append(getLastMoniMsgs(domapp))
+                    break
+
+                # SN data
+                
+                if snTimer.expired():
+                    try:
+                        sndata = domapp.getSupernovaData()
+                        self.debugMsgs.append("Got %d sn bytes" % len(sndata))
+                        self.debugMsgs.append("Delta hits: %d bytes total" % nbDelta)
+                    except Exception, e:
+                        self.result = "FAIL"
+                        self.debugMsgs.append("GET SN DATA FAILED: %s" % exc_string())
+                        self.debugMsgs.append(getLastMoniMsgs(domapp))
+                        break
+
+                    try:
+                        prevClock, prevBins = self.checkSNdata(sndata, prevClock, prevBins)
+                    except Exception, e:
+                        self.result = "FAIL"
+                        self.debugMsgs.append("SN data check failed: '%s'" % e)
+                        self.debugMsgs.append(getLastMoniMsgs(domapp))
+                        break
+                    
+                    # Reset timer for next time
+                    snTimer = MiniTimer(1000)
+
+            domapp.endRun()
+            self.turnOffHV(domapp)
+
+        except Exception, e:
+            self.result = "FAIL"
+            self.debugMsgs.append(exc_string())
+            try:
+                self.turnOffHV(domapp)
+                domapp.endRun()
+            except:
+                pass
+            self.debugMsgs.append(getLastMoniMsgs(domapp))
+            return
+
+class PedestalStabilityTest(DOMAppHVTest):
     "Measure pedestal stability by taking an average over several tries"
-    def __init__(self, card, wire, dom, dor):
-        DOMTest.__init__(self, card, wire, dom, dor,
-                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP, runLength=10)
-        
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)        
         self.result = "PASS"
@@ -309,7 +386,6 @@ class PedestalStabilityTest(DOMTest):
         ATWD_PEDS_PER_LOOP = 100 
         FADC_PEDS_PER_LOOP = 200 
         MAX_ALLOWED_RMS    = 1.0
-        HV_TOLERANCE       = 20   # HV must be correct to 10 Volts (20 units)
         numloops           = 100
         try:
             domapp.resetMonitorBuffer()
@@ -319,13 +395,7 @@ class PedestalStabilityTest(DOMTest):
             domapp.setMonitoringIntervals()
 
             ### Turn on HV
-            domapp.enableHV()
-            domapp.setHV(NOMINAL_HV_VOLTS*2)
-            time.sleep(2)
-            hvadc, hvdac = domapp.queryHV()
-            self.debugMsgs.append("HV: read %d V (ADC) %d V (DAC)" % (hvadc/2,hvdac/2))
-            if abs(hvadc-NOMINAL_HV_VOLTS*2) > HV_TOLERANCE:
-                raise Exception("HV deviates too much from set value!")
+            self.setHV(domapp, NOMINAL_HV_VOLTS)
             
             ### Collect pedestals N times
 
@@ -335,7 +405,9 @@ class PedestalStabilityTest(DOMTest):
             fadcSum   = [0. for samp in xrange(256)]
             fadcSumSq = [0. for samp in xrange(256)]
 
-            for loop in xrange(numloops):
+            numloops = 0
+            t = MiniTimer(self.runLength*1000)
+            while not t.expired():
                 # Do the collection
                 domapp.collectPedestals(ATWD_PEDS_PER_LOOP,
                                         ATWD_PEDS_PER_LOOP,
@@ -368,7 +440,10 @@ class PedestalStabilityTest(DOMTest):
                     val, = unpack('>H', buf[idx*2:idx*2+2])
                     fadcSum[samp]   += float(val)
                     fadcSumSq[samp] += float(val)**2
-                    
+                numloops += 1
+
+            if numloops < 1: raise Exception("No successful pedestal collections occurred!")
+            
             # Compute final RMS
             maxrms = 0.
             for ab in xrange(2):
@@ -385,25 +460,24 @@ class PedestalStabilityTest(DOMTest):
                 if rms > maxrms: maxrms = rms
 
             ### Turn off HV
-            domapp.setHV(0)
-            domapp.disableHV()
-
+            self.turnOffHV(domapp)
+            
             if maxrms > MAX_ALLOWED_RMS:
                 raise Exception("Maximum allowed RMS (%2.3f) exceeeded (%2.3f)!" %\
                                 (MAX_ALLOWED_RMS, maxrms))
 
         except Exception, e:
+            try:
+                self.turnOffHV(domapp)
+            except:
+                pass
             self.result = "FAIL"
             self.debugMsgs.append(exc_string())
             self.debugMsgs.append(getLastMoniMsgs(domapp))
             return
-        
-class DeltaCompressionBeaconTest(DOMTest):
-    "Make sure delta-compressed beacons have all four ATWD channels read out"
-    def __init__(self, card, wire, dom, dor):
-        DOMTest.__init__(self, card, wire, dom, dor,
-                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP, runLength=10)
 
+class DeltaCompressionBeaconTest(DOMAppTest):
+    "Make sure delta-compressed beacons have all four ATWD channels read out"
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         self.result = "PASS"
@@ -426,7 +500,7 @@ class DeltaCompressionBeaconTest(DOMTest):
             return
 
         # collect data
-        t = MiniTimer(5000)
+        t = MiniTimer(self.runLength * 1000)
         while not t.expired():
             self.debugMsgs.append(getLastMoniMsgs(domapp))
 
@@ -460,12 +534,8 @@ class DeltaCompressionBeaconTest(DOMTest):
             self.debugMsgs.append("END RUN FAILED: %s" % exc_string())
             self.debugMsgs.append(getLastMoniMsgs(domapp))
             
-class SNTest(DOMTest):
-    "Make sure no gaps are present in SN data"
-    def __init__(self, card, wire, dom, dor):
-        DOMTest.__init__(self, card, wire, dom, dor,
-                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP, runLength=10)
-
+class SNTest(DOMAppTest):
+    "Make sure no gaps are present in SN data"    
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         self.result = "PASS"
@@ -501,26 +571,13 @@ class SNTest(DOMTest):
                 self.debugMsgs.append(getLastMoniMsgs(domapp))
                 break
 
-            if sndata      == None: continue
-            if len(sndata) == 0:    continue
-            if len(sndata) < 10:
+            try:
+                prevClock, prevBins = self.checkSNdata(sndata, prevClock, prevBins)
+            except Exception, e:
                 self.result = "FAIL"
-                self.debugMsgs.append("SN DATA CHECK: %d bytes" % len(sndata))
-                break
-            bytes, fmtid, t5, t4, t3, t2, t1, t0 = unpack('>hh6B', sndata[0:10])
-            clock  = ((((t5 << 8L | t4) << 8L | t3) << 8L | t2) << 8L | t1) << 8L | t0
-            scalers = unpack('%dB' % (len(sndata) - 10), sndata[10:])
-            bins    = len(scalers)
-
-            if prevBins and not SNClockOk(clock, prevClock, bins, prevBins):
-                self.result = "FAIL"
-                self.debugMsgs.append("CLOCK CHECK: %d %d %d %d->%d %x->%x" % (i, bytes, fmtid, prevBins,
-                                                                               bins, prevClock, clock))
+                self.debugMsgs.append("SN data check failed: '%s'" % e)
                 self.debugMsgs.append(getLastMoniMsgs(domapp))
                 break
-            
-            prevClock = clock
-            prevBins  = bins
 
             try:
                 time.sleep(1)
@@ -692,6 +749,10 @@ def main():
                    SNTest, 
                    DomappToIceboot]
 
+    if opt.doHVTests:
+        ListOfTests.append(PedestalStabilityTest)
+        ListOfTests.append(SNDeltaSPEHitTest)
+        
     dor = Driver()
     dor.enable_blocking(0)
     domDict = dor.get_active_doms()
@@ -714,9 +775,6 @@ def main():
                 print '\t', t.__doc__
         raise SystemExit
     
-    if opt.doHVTests:
-        ListOfTests.append(PedestalStabilityTest)
-
     revTxt = "UNKNOWN/head"
     try:
         revTxt = getDomappToolsPythonVersion() # Can fail if not an official installation
