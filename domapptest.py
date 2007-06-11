@@ -3,7 +3,6 @@
 # domapptest.py
 # John Jacobsen, NPX Designs, Inc., john@mail.npxdesigns.com
 # Started: Wed May  9 21:57:21 2007
-
 from __future__ import generators
 import time, threading, os, sys
 from re import search, sub
@@ -123,6 +122,75 @@ class CheckIceboot(DOMTest):
             self.result = "FAIL"
             self.debugMsgs.append("check for iceboot prompt failed")
             self.debugMsgs.append(txt)
+        else:
+            self.result = "PASS"
+
+
+class SoftbootCycle(DOMTest):
+    """
+    Verify softboot behavior, in particular the following sequence:
+       iceboot -> domapp -> check domapp -> comm reset ->
+       softboot -> comm reset -> check iceboot
+    """
+    def __init__(self, card, wire, dom, dor):
+        DOMTest.__init__(self, card, wire, dom, dor,
+                         start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ICEBOOT)
+    def run(self, fd):
+        # Verify iceboot
+        self.result = "PASS"
+        ok, txt = self.dor.isInIceboot2()
+        if not ok:
+            self.result = "FAIL"
+            self.debugMsgs.append("first check for iceboot prompt failed")
+            self.debugMsgs.append(txt)
+            return
+
+        # Transition to domapp
+        ok, txt = self.dor.icebootToDomapp2()
+        if not ok:        
+            self.result = "FAIL"
+            self.debugMsgs.append("could not transition into domapp")
+            self.debugMsgs.append(txt)
+            return
+
+        # Check domapp by fetching release
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            domapp.getDomappVersion()
+        except Exception, e:
+            self.result = "FAIL"
+            self.debugMsgs.append(exc_string())
+            return
+
+        # Collect driver/FPGA stats
+        self.debugMsgs.append("Before first comm. reset:")
+        self.debugMsgs.append(self.dor.commStats())
+        self.debugMsgs.append(self.dor.fpgaRegs())
+        # Issue comms reset
+        self.dor.commReset()
+        # Collect driver/FPGA stats
+        self.debugMsgs.append("After first comm. reset, before softboot:")
+        self.debugMsgs.append(self.dor.commStats())
+        self.debugMsgs.append(self.dor.fpgaRegs())
+        # Softboot DOM
+        self.dor.softboot()
+        # Collect driver/FPGA stats
+        self.debugMsgs.append("After softboot, before 2nd comm. reset:")
+        self.debugMsgs.append(self.dor.commStats())
+        self.debugMsgs.append(self.dor.fpgaRegs())
+        # Issue comms reset again
+        self.dor.commReset()
+        # Collect driver/FPGA stats
+        self.debugMsgs.append("After 2nd comm. reset:")
+        self.debugMsgs.append(self.dor.commStats())
+        self.debugMsgs.append(self.dor.fpgaRegs())
+        # Verify iceboot again
+        ok, txt = self.dor.isInIceboot2()
+        if not ok:
+            self.result = "FAIL"
+            self.debugMsgs.append("second check for iceboot prompt failed")
+            self.debugMsgs.append(txt)
+            return
         else:
             self.result = "PASS"
             
@@ -775,7 +843,7 @@ def main():
     startState = DOMTest.STATE_ICEBOOT # FIXME: what if it's not?
     
     ListOfTests = [IcebootToConfigboot, CheckConfigboot, ConfigbootToIceboot,
-                   CheckIceboot, IcebootToDomapp, 
+                   CheckIceboot, SoftbootCycle, IcebootToDomapp, 
                    GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
                    SNTest, 
                    DomappToIceboot]
@@ -783,10 +851,14 @@ def main():
     if opt.doHVTests:
         ListOfTests.append(PedestalStabilityTest)
         ListOfTests.append(SNDeltaSPEHitTest)
-        
-    dor = Driver()
-    dor.enable_blocking(0)
-    domDict = dor.get_active_doms()
+
+    try:
+        dor = Driver()
+        dor.enable_blocking(0)
+        domDict = dor.get_active_doms()
+    except Exception, e:
+        print "No driver present? ('%s')" % e
+        raise SystemExit
     
     testSet = TestingSet(domDict, opt.stopFail)
     for t in ListOfTests:

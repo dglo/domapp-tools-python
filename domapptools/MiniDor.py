@@ -27,14 +27,31 @@ class MiniDor:
     def close(self):
         os.close(self.fd)
     
+    def cardpath(self):
+        return os.path.join("/", "proc", "driver", "domhub",
+                            "card%d" % self.card)
+
     def dompath(self):
         return os.path.join("/", "proc", "driver", "domhub",
                             "card%d" % self.card,
                             "pair%d" % self.wire,
                             "dom%s"  % self.dom)
+
+    def commStats(self):
+        f = file(os.path.join(self.dompath(), "comstat"),"r")
+        return f.read()
+
+    def fpgaRegs(self):
+        f = file(os.path.join(self.cardpath(), "fpga"),"r")
+        return f.read()
     
     def softboot(self):
         f = file(os.path.join(self.dompath(), "softboot"),"w")
+        f.write("reset\n")
+        f.close()
+
+    def commReset(self):
+        f = file(os.path.join(self.dompath(), "is-communicating"),"w")
         f.write("reset\n")
         f.close()
 
