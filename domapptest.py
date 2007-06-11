@@ -19,6 +19,7 @@ import os.path
 import optparse
 
 class WriteTimeoutException(Exception):             pass
+class RepeatedTestChangesStateException(Exception): pass
 
 class DOMTest:
     STATE_ICEBOOT    = "ib"
@@ -40,6 +41,9 @@ class DOMTest:
         self.result     = None
         self.summary    = ""
 
+    def changesState(self):
+        return self.startState != self.endState
+    
     def setRunLength(self, l):
         self.runLength = l
 
@@ -601,6 +605,7 @@ class TestingSet:
         self.domDict      = domDict
         self.testList     = []
         self.durationDict = {}
+        self.ntrialsDict  = {}
         self.threads      = {}
         self.numpassed    = 0
         self.numfailed    = 0
@@ -608,8 +613,9 @@ class TestingSet:
         self.counterLock  = threading.Lock()
         self.stopOnFail   = stopOnFail
 
-    def add(self, test, duration=None):
+    def add(self, test, ntrials=1, duration=None):
         self.testList.append(test)
+        self.ntrialsDict[test.__name__]  = ntrials
         self.durationDict[test] = duration
 
     def setDuration(self, testName, duration):
@@ -619,8 +625,16 @@ class TestingSet:
                 self.durationDict[t] = duration
                 found = True
         if not found: raise TestNotFoundException("test name %s not defined" % testName)
-        
-    def cycle(self, testList, startState, c, w, d):
+
+    def setCount(self, testName, count):
+        found = False
+        for t in self.testList:
+            if t.__name__ == testName:
+                self.ntrialsDict[testName] = count
+                found = True
+        if not found: raise TestNotFoundException("test name %s not defined" % testName)
+
+    def cycle(self, testList, ntrialsDict, startState, c, w, d):
         """
         Cycle through all tests, visiting first all the ones in the current state, then
         moving on to another state, and so on until all in-state and state-change tests
@@ -635,7 +649,9 @@ class TestingSet:
             nextTest = None
             nextStateChangeTest = None
             for test in testList:
-                if (test not in doneDict or not doneDict[test]) and test.startState == state:
+                if not doneDict.has_key(test): doneDict[test] = 0
+                if (test not in doneDict
+                    or doneDict[test] < ntrialsDict[test.__class__.__name__]) and test.startState == state:
                     allDone = False
                     nextTest = test
                     if test.endState == state:
@@ -647,7 +663,7 @@ class TestingSet:
             elif allDoneThisState:
                 nextTest = nextStateChangeTest
             state = nextTest.endState
-            doneDict[nextTest] = True
+            doneDict[nextTest] += 1
             yield nextTest
 
     def doAllTests(self, domid, c, w, d):
@@ -661,7 +677,11 @@ class TestingSet:
             if self.durationDict[testName]:
                 t.setRunLength(self.durationDict[testName])
             testObjList.append(t)
-        for test in self.cycle(testObjList, startState, c, w, d):
+            # FIXME - check to make sure tests for which ntrialsDict > 1 preserve state
+            if self.ntrialsDict[t.__class__.__name__] > 1 and t.changesState():
+                raise RepeatedTestChangesStateException("Test %s changes DOM state, "
+                                                        % t.__class__.__name__ + "cannot be repeated.")
+        for test in self.cycle(testObjList, self.ntrialsDict, startState, c, w, d):
             test.run(dor.fd)
             if(test.startState != test.endState): # If state change, flush buffers etc. to get clean IO
                 dor.close()
@@ -691,7 +711,12 @@ class TestingSet:
             
     def runThread(self, domid):
         c, w, d = self.domDict[domid]
-        self.doAllTests(domid, c,w,d)
+        try:
+            self.doAllTests(domid, c,w,d)
+        except KeyboardInterrupt, k:
+            return
+        except Exception, e:
+            print "Test sequence aborted: %s" % e        
         
     def go(self): 
         for dom in self.domDict:
@@ -734,10 +759,16 @@ def main():
                  action="append",     type="string",    nargs=2,
                  dest="setDuration",  help="Set duration in secs of a test, " + \
                                            "e.g. '-d SNTest 1000' (repeatable)")
-    
+
+    p.add_option("-n", "--repeat-count",
+                 action="append",     type="string",    nargs=2,
+                 dest="repeatCount",  help="Set # of times to run a test, "   + \
+                                            "e.g. '-n SNTest 5' (repeatable) " + \
+                                            "(non-state-changing tests only!)")
     p.set_defaults(stopFail         = False,
                    doHVTests        = False,
                    setDuration      = None,
+                   repeatCount      = None,
                    listTests        = False)
     opt, args = p.parse_args()
 
@@ -760,6 +791,7 @@ def main():
     testSet = TestingSet(domDict, opt.stopFail)
     for t in ListOfTests:
         testSet.add(t)
+
     if opt.setDuration:
         for (testName, dur) in opt.setDuration:
             try:
@@ -768,6 +800,14 @@ def main():
                 print "Could not set duration for %s to '%s' seconds: %s" % (testName, dur, e)
                 raise SystemExit
 
+    if opt.repeatCount:
+        for (testName, count) in opt.repeatCount:
+            try:
+                testSet.setCount(testName, int(count))
+            except Exception, e:
+                print "Could not set repeat count for %s to '%s': %s" % (testName, count, e)
+                raise SystemExit
+            
     if opt.listTests:
         for t in ListOfTests:
             print t.__name__
