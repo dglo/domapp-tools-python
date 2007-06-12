@@ -50,6 +50,7 @@ class MiniDor:
         f = file(os.path.join(self.dompath(), "softboot"),"w")
         f.write("reset\n")
         f.close()
+        time.sleep(5)
 
     def commReset(self):
         f = file(os.path.join(self.dompath(), "is-communicating"),"w")
