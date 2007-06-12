@@ -106,7 +106,7 @@ class MiniDor:
     def icebootToConfigboot2(self): return self.se("boot-serial reboot\r\n", "#", 5000)
     def icebootToDomapp2(self):
         ok, txt = self.se("domapp\r\n", "domapp", 5000)
-        if ok: time.sleep(5)
+        if ok: time.sleep(8) # Give it lots of time
         return (ok, txt)
 
     def isInIceboot(self):         return self.isInIceboot2()[0]
