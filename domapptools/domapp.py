@@ -140,12 +140,12 @@ class DOMApp:
             try:
                 nw = os.write(self.fd, msg)
             except OSError, e:
-                if e.errno == EAGAIN: time.sleep(0.001) # Nothing available
+                if e.errno == EAGAIN:
+                    time.sleep(0.001) # Nothing available
+                    continue
                 else: raise
             except Exception: raise
-            if nw == 0:
-                time.sleep(0.001) # ??? see this at SPS
-            elif nw != len(msg): raise Exception("Partial write of %d bytes (wanted %d)" %
+            if nw != len(msg): raise Exception("Partial write of %d bytes (wanted %d)" %
                                                  (nw, len(msg)))
                 
         t = MiniTimer(timeout)
