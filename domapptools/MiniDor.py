@@ -12,6 +12,7 @@ from re import search
 EAGAIN   = 11    
 
 class ExpectStringNotFoundException(Exception): pass
+class WriteTimeoutException(Exception): pass
 
 class MiniDor:
     def __init__(self, card=0, wire=0, dom='A'):
