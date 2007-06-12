@@ -100,8 +100,8 @@ class MiniDor:
         return (True, "")
 
     # Versions which return both success and error message
-    def isInIceboot2(self):         return self.se("\r\n", ">", 3000)
-    def isInConfigboot2(self):      return self.se("\r\n", "#", 3000)
+    def isInIceboot2(self):         return self.se("\r\n", ">", 5000)
+    def isInConfigboot2(self):      return self.se("\r\n", "#", 5000)
     def configbootToIceboot2(self): return self.se("r",    ">", 5000)
     def icebootToConfigboot2(self): return self.se("boot-serial reboot\r\n", "#", 5000)
     def icebootToDomapp2(self):
