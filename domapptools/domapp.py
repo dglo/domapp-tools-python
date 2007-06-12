@@ -112,7 +112,7 @@ class MessagingException(Exception):
 
     def __str__(self):
         if len(self.msg) < 8:
-            return "(Message < 8 bytes)"
+            return "(Message %d bytes < 8 bytes)" % len(self.msg)
         return "(MT=%d,MST=%d,LEN=%d,0x%04x,ID=0x%02x,STATUS=0x%02x)" % unpack('>BBHHBB', self.msg)
 
 class DOMApp:
