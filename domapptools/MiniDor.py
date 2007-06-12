@@ -50,7 +50,7 @@ class MiniDor:
         f = file(os.path.join(self.dompath(), "softboot"),"w")
         f.write("reset\n")
         f.close()
-        time.sleep(5)
+        time.sleep(2) # Wait for FPGA to **start** reloading - assume user will re-open dev file
 
     def commReset(self):
         f = file(os.path.join(self.dompath(), "is-communicating"),"w")
