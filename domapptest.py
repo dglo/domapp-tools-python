@@ -52,6 +52,8 @@ class DOMTest:
             for m in self.debugMsgs:
                 if m != "": str += "%s\n" % m
         return str
+
+    def clearDebugTxt(self): self.debugMsgs = []
     
     def name(self):
         str = repr(self)
@@ -773,6 +775,7 @@ class TestingSet:
                 print "################################################"
                 if self.stopOnFail: sf = True
             self.numtests += 1
+            test.clearDebugTxt()
             self.counterLock.release()
             #### UNLOCK
             if sf: return # Quit upon first failure
