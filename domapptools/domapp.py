@@ -143,8 +143,10 @@ class DOMApp:
                 if e.errno == EAGAIN: time.sleep(0.001) # Nothing available
                 else: raise
             except Exception: raise
-            if nw != len(msg): raise Exception("Partial write of %d bytes (wanted %d)" %
-                                               (nw, len(msg)))
+            if nw == 0:
+                time.sleep(0.001) # ??? see this at SPS
+            elif nw != len(msg): raise Exception("Partial write of %d bytes (wanted %d)" %
+                                                 (nw, len(msg)))
                 
         t = MiniTimer(timeout)
         buf = ""
