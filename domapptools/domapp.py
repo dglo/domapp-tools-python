@@ -133,8 +133,17 @@ class DOMApp:
         ndat = len(data)
         msg  = pack(">BBHHBB", type, subtype, ndat, 0, msgid, status) + data
         EAGAIN = 11
-        # FIXME: handle failed (would-block) writes
-        os.write(self.fd, msg)
+        # FIXME: handle partial writes
+        t = MiniTimer(timeout)
+        while not t.expired():
+            try:
+                nw = os.write(self.fd, msg)
+            except OSError, e:
+                if e.errno == EAGAIN: time.sleep(0.001) # Nothing available
+                else: raise
+            except Exception: raise
+            if nw != len(msg): raise Exception("Partial write!")
+                
         t = MiniTimer(timeout)
         buf = ""
         while not t.expired():
