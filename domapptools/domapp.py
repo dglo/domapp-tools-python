@@ -136,6 +136,7 @@ class DOMApp:
         # FIXME: handle partial writes
         t = MiniTimer(timeout)
         while not t.expired():
+            nw = 0
             try:
                 nw = os.write(self.fd, msg)
             except OSError, e:
