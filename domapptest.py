@@ -98,6 +98,21 @@ class DomappToIceboot(DOMTest):
         else:
             self.result = "PASS"
 
+class EchoToIceboot(DOMTest):
+    "Make sure (softboot) transition from echo-mode to iceboot succeeds"
+    def __init__(self, card, wire, dom, dor):
+        DOMTest.__init__(self, card, wire, dom, dor,
+                         start=DOMTest.STATE_ECHO, end=DOMTest.STATE_ICEBOOT)
+    def run(self, fd):
+        self.dor.softboot()
+        ok, txt = self.dor.isInIceboot2()
+        if not ok:
+            self.result = "FAIL"
+            self.debugMsgs.append("check for iceboot prompt failed")
+            self.debugMsgs.append(txt)
+        else:
+            self.result = "PASS"
+    
 class IcebootToDomapp(DOMTest):
     "Make sure transition from iceboot to domapp succeeds"
     def __init__(self, card, wire, dom, dor):
@@ -196,6 +211,7 @@ class SoftbootCycle(DOMTest):
         else:
             self.result = "PASS"
             
+
 class IcebootToConfigboot(DOMTest):
     "Make sure transition from iceboot to configboot succeeds"
     def __init__(self, card, wire, dom, dor):
@@ -230,6 +246,67 @@ class CheckConfigboot(DOMTest):
         else:
             self.result = "PASS"
 
+class IcebootToEcho(DOMTest):
+    "Make sure transition from iceboot to echo-mode succeeds"
+    def __init__(self, card, wire, dom, dor):
+        DOMTest.__init__(self, card, wire, dom, dor,
+                         start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ECHO)
+    def run(self, fd):
+        ok, txt = self.dor.icebootToEcho2()
+        if not ok:
+            self.result = "FAIL"
+            self.debugMsgs.append("could not transition into echo-mode")
+            self.debugMsgs.append(txt)
+        else:
+            self.result = "PASS"
+
+class EchoTest(DOMTest):
+    "Perform echo test of 100 variable-length random packets, when DOM is in echo mode"
+    def __init__(self, card, wire, dom, dor):
+        DOMTest.__init__(self, card, wire, dom, dor,
+                         start=DOMTest.STATE_ECHO, end=DOMTest.STATE_ECHO)
+    def run(self, fd):
+        numPackets    = 10
+        maxPacketSize = 4092
+        timeout       = 30*1000 # Generous 30-second timeout
+        self.result   = "PASS"
+        for p in xrange(0, numPackets):
+            ok, txt = self.dor.echoRandomPacket2(maxPacketSize, timeout)
+            if not ok:
+                self.result = "FAIL"
+                self.debugMsgs.append("echo of %dth packet failed" % p)
+                self.debugMsgs.append(txt)
+                return
+
+class EchoCommResetTest(DOMTest):
+    "Perform echo tests when DOM is in echo mode"
+    def __init__(self, card, wire, dom, dor):
+        DOMTest.__init__(self, card, wire, dom, dor,
+                         start=DOMTest.STATE_ECHO, end=DOMTest.STATE_ECHO)
+    def run(self, fd):
+        numPackets    = 10
+        maxPacketSize = 4092
+        timeout       = 30*1000 # Generous 30-second timeout
+        self.result   = "PASS"
+        
+        for p in xrange(0, numPackets-1):
+            ok, txt = self.dor.echoRandomPacket2(maxPacketSize, timeout)
+            if not ok:
+                self.result = "FAIL"
+                self.debugMsgs.append("echo of %dth packet failed" % p)
+                self.debugMsgs.append(txt)
+                return
+            else:
+                # Do a comms reset between each:
+                self.dor.commReset()
+
+        # Do the last (n-1th) echo test
+        ok, txt = self.dor.echoRandomPacket2(maxPacketSize, timeout)
+        if not ok:
+            self.result = "FAIL"
+            self.debugMsgs.append("echo of %dth packet failed" % p)
+            self.debugMsgs.append(txt)
+            
 ############################## DOMAPP TEST BASE CLASSES ############################
             
 class QuickDOMAppTest(DOMTest):
@@ -787,7 +864,7 @@ class TestingSet:
         except KeyboardInterrupt, k:
             return
         except Exception, e:
-            print "Test sequence aborted: %s" % e        
+            print "Test sequence aborted: %s" % exc_string()        
         
     def go(self): 
         for dom in self.domDict:
@@ -849,7 +926,7 @@ def main():
                    CheckIceboot, SoftbootCycle, IcebootToDomapp, 
                    GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
                    SNTest, 
-                   DomappToIceboot]
+                   DomappToIceboot, IcebootToEcho, EchoTest, EchoCommResetTest, EchoToIceboot]
 
     if opt.doHVTests:
         ListOfTests.append(PedestalStabilityTest)

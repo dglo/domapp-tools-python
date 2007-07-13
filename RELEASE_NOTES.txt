@@ -1,4 +1,6 @@
 Issues:
+
+0001623: Add test which interleaves echo messages and comms resets
 0001511: DOMPrep.py - tolerate failures to open dev file
 ==============================================================
 
