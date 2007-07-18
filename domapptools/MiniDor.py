@@ -148,10 +148,10 @@ class MiniDor:
     
     def isInIceboot(self):         return self.isInIceboot2()[0]
     def isInConfigboot(self):      return self.isInConfigboot2()[0]
-    def configbootToIceboot(self): return self.configbootToIceboot2[0]
-    def icebootToConfigboot(self): return self.icebootToConfigboot2[0]
-    def icebootToDomapp(self):     return self.icebootToDomapp2[0]
-    def icebootToEcho(self):       return self.icebootToEcho2[0]
+    def configbootToIceboot(self): return self.configbootToIceboot2()[0]
+    def icebootToConfigboot(self): return self.icebootToConfigboot2()[0]
+    def icebootToDomapp(self):     return self.icebootToDomapp2()[0]
+    def icebootToEcho(self):       return self.icebootToEcho2()[0]
     
 def main():
     dom00a = MiniDor(0,0,'A')
