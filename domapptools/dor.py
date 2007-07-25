@@ -67,6 +67,12 @@ class DOMInfo:
 def makedev(card, pair, dom):
     return "/dev/dhc%dw%dd%s" % (card, pair, dom.upper())
 
+class GPS:
+    def __init__(self, card):
+        self.card = card
+    def __str__(self):
+        return "GPS object for card %d" % self.card
+
 class Driver:
     """Main driver interface."""
     def __init__(self, root='/proc/driver/domhub'):
@@ -92,6 +98,12 @@ class Driver:
         """Hack around Linux python bug"""
         return apply(getattr(self,method), params)
 
+    def readgps(self, card):
+        print card
+        proc = os.path.join(self.root, "card%d" % card, "syncgps")
+        print proc
+        return GPS(card)
+    
     def scan(self):
         """Discover the hierarchy of cards and wire pairs."""
         self.cards = [ ]
@@ -292,7 +304,7 @@ class Driver:
                             doms.append((int(c), int(p), d))
                         
         return doms
-    
+
 class Power:
     """
     This is an old interface - users are strongly discouraged
