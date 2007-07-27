@@ -40,6 +40,10 @@ class DOMTest:
         self.result     = None
         self.summary    = ""
 
+    def appendMoni(self, domapp):
+        m = getLastMoniMsgs(domapp)
+        if m != []: self.debugMsgs.append(m)
+        
     def changesState(self):
         return self.startState != self.endState
     
@@ -380,9 +384,8 @@ def setDefaultDACs(domapp):
 def unpackMoni(monidata):
     while monidata and len(monidata)>=4:
         moniLen, moniType = unpack('>hh', monidata[0:4])
-        if moniType == 0xCB:
-            msg = monidata[10:moniLen]
-            yield msg
+        if moniType == 0xCB: # ASCII message
+            yield monidata[10:moniLen]
         if moniType == 0xCA:
             kind,    = unpack('b', monidata[10])
             subkind, = unpack('b', monidata[11])
@@ -412,16 +415,16 @@ def getLastMoniMsgs(domapp):
     Drain buffered monitoring messages - return concatenated
     as big ASCII string
     """
-    ret = ""
+    ret = []
     try:
         while True:
             monidata = domapp.getMonitorData()
             if len(monidata) == 0: break
-            for msg in unpackMoni(monidata): ret += msg + "\n"
+            for msg in unpackMoni(monidata):
+                ret.append(msg)
     except Exception, e:
-        ret +=("GET MONI DATA FAILED: %s" % exc_string())
+        ret.append("GET MONI DATA FAILED: %s" % exc_string())
     return ret
-
 
 ################################### SPECIFIC TESTS ###############################
 
@@ -448,6 +451,32 @@ class DOMIDTest(QuickDOMAppTest):
             self.debugMsgs.append(exc_string())
 
 
+class SetFastMoniIvalTest(DOMAppTest):
+    "Set fast monitoring interval and make sure rate of generated records is roughly correct"
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        self.result = "PASS"
+        domapp.resetMonitorBuffer()
+        setDefaultDACs(domapp)
+        fastInterval        = 2 # Number of seconds delay between records
+        tolerance           = 2 # Want to be within this many records of expected
+        fastMoniRecordCount = 0
+        domapp.setMonitoringIntervals(fastInt=fastInterval)
+        expectedRecordCount = self.runLength/fastInterval
+        t = MiniTimer(self.runLength*1000)
+        while not t.expired():
+            # Moni data
+            mlist = getLastMoniMsgs(domapp)
+            for m in mlist:
+                s = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
+                if(s): fastMoniRecordCount += 1
+                self.debugMsgs.append(m)
+        if(abs(expectedRecordCount-fastMoniRecordCount) > tolerance):
+            self.debugMsgs.append("Fast moni record rate mismatch: wanted %d, got %d (tolerance %d)"
+                                  % (expectedRecordCount, fastMoniRecordCount, tolerance))
+            self.result = "FAIL"
+        
+    
 class SNDeltaSPEHitTest(DOMAppHVTest):
     "Collect both SPE and SN data, make sure there are no gaps in SN data"
     def run(self, fd):
@@ -476,7 +505,7 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
             while not t.expired():
 
                 # Moni data
-                self.debugMsgs.append(getLastMoniMsgs(domapp))
+                self.appendMoni(domapp)
 
                 # Hit (delta compressed) data
                 try:
@@ -487,7 +516,7 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
                 except Exception, e:
                     self.result = "FAIL"
                     self.debugMsgs.append("GET WAVEFORM DATA FAILED: %s" % exc_string())
-                    self.debugMsgs.append(getLastMoniMsgs(domapp))
+                    self.appendMoni(domapp)
                     break
 
                 # SN data
@@ -500,7 +529,7 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
                     except Exception, e:
                         self.result = "FAIL"
                         self.debugMsgs.append("GET SN DATA FAILED: %s" % exc_string())
-                        self.debugMsgs.append(getLastMoniMsgs(domapp))
+                        self.appendMoni(domapp)
                         break
 
                     try:
@@ -508,7 +537,7 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
                     except Exception, e:
                         self.result = "FAIL"
                         self.debugMsgs.append("SN data check failed: '%s'" % e)
-                        self.debugMsgs.append(getLastMoniMsgs(domapp))
+                        self.appendMoni(domapp)
                         break
                     
                     # Reset timer for next time
@@ -525,7 +554,7 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
                 domapp.endRun()
             except:
                 pass
-            self.debugMsgs.append(getLastMoniMsgs(domapp))
+            self.appendMoni(domapp)
             return
 
 class PedestalStabilityTest(DOMAppHVTest):
@@ -624,7 +653,7 @@ class PedestalStabilityTest(DOMAppHVTest):
                 pass
             self.result = "FAIL"
             self.debugMsgs.append(exc_string())
-            self.debugMsgs.append(getLastMoniMsgs(domapp))
+            self.appendMoni(domapp)
             return
 
 class DeltaCompressionBeaconTest(DOMAppTest):
@@ -647,13 +676,13 @@ class DeltaCompressionBeaconTest(DOMAppTest):
         except Exception, e:
             self.result = "FAIL"
             self.debugMsgs.append(exc_string())
-            self.debugMsgs.append(getLastMoniMsgs(domapp))
+            self.appendMoni(domapp)
             return
 
         # collect data
         t = MiniTimer(self.runLength * 1000)
         while not t.expired():
-            self.debugMsgs.append(getLastMoniMsgs(domapp))
+            self.appendMoni(domapp)
 
             # Fetch hit data
             good = True
@@ -670,7 +699,7 @@ class DeltaCompressionBeaconTest(DOMAppTest):
             except Exception, e:
                 self.result = "FAIL"
                 self.debugMsgs.append("GET WAVEFORM DATA FAILED: %s" % exc_string())
-                self.debugMsgs.append(getLastMoniMsgs(domapp))
+                self.appendMoni(domapp)
                 break
             
             if not good:
@@ -683,7 +712,7 @@ class DeltaCompressionBeaconTest(DOMAppTest):
         except Exception, e:
             self.result = "FAIL"
             self.debugMsgs.append("END RUN FAILED: %s" % exc_string())
-            self.debugMsgs.append(getLastMoniMsgs(domapp))
+            self.appendMoni(domapp)
             
 class SNTest(DOMAppTest):
     "Make sure no gaps are present in SN data"    
@@ -703,14 +732,14 @@ class SNTest(DOMAppTest):
         except Exception, e:
             self.result = "FAIL"
             self.debugMsgs.append(exc_string())
-            self.debugMsgs.append(getLastMoniMsgs(domapp))
+            self.appendMoni(domapp)
             return
             
         prevBins, prevClock = None, None
 
         for i in xrange(0,self.runLength):
 
-            self.debugMsgs.append(getLastMoniMsgs(domapp))
+            self.appendMoni(domapp)
             
             # Fetch supernova
 
@@ -719,7 +748,7 @@ class SNTest(DOMAppTest):
             except Exception, e:
                 self.result = "FAIL"
                 self.debugMsgs.append("GET SN DATA FAILED: %s" % exc_string())
-                self.debugMsgs.append(getLastMoniMsgs(domapp))
+                self.appendMoni(domapp)
                 break
 
             try:
@@ -727,7 +756,7 @@ class SNTest(DOMAppTest):
             except Exception, e:
                 self.result = "FAIL"
                 self.debugMsgs.append("SN data check failed: '%s'" % e)
-                self.debugMsgs.append(getLastMoniMsgs(domapp))
+                self.appendMoni(domapp)
                 break
 
             try:
@@ -742,17 +771,19 @@ class SNTest(DOMAppTest):
         except Exception, e:
             self.result = "FAIL"
             self.debugMsgs.append("END RUN FAILED: %s" % exc_string())
-            self.debugMsgs.append(getLastMoniMsgs(domapp))
+            self.appendMoni(domapp)
 
 class TestNotFoundException(Exception): pass
 
 class TestingSet:
     "Class for running multiple tests on a group of DOMs in parallel"
-    def __init__(self, domDict, stopOnFail=False):
+    def __init__(self, domDict, doOnly=False, stopOnFail=False):
         self.domDict      = domDict
         self.testList     = []
         self.durationDict = {}
         self.ntrialsDict  = {}
+        self.dontSkipDict = {}     # Keep track of whether to really do this test
+        self.doOnly       = doOnly # If true, use dontSkipDict to select tests; else do all tests
         self.threads      = {}
         self.numpassed    = 0
         self.numfailed    = 0
@@ -760,10 +791,10 @@ class TestingSet:
         self.counterLock  = threading.Lock()
         self.stopOnFail   = stopOnFail
 
-    def add(self, test, ntrials=1, duration=None):
+    def add(self, test):
         self.testList.append(test)
-        self.ntrialsDict[test.__name__]  = ntrials
-        self.durationDict[test] = duration
+        self.ntrialsDict[test.__name__] = 1
+        self.durationDict[test] = None
 
     def setDuration(self, testName, duration):
         found = False
@@ -777,11 +808,12 @@ class TestingSet:
         found = False
         for t in self.testList:
             if t.__name__ == testName:
-                self.ntrialsDict[testName] = count
+                self.ntrialsDict[testName]  = count
+                self.dontSkipDict[testName] = True
                 found = True
         if not found: raise TestNotFoundException("test name %s not defined" % testName)
 
-    def cycle(self, testList, ntrialsDict, startState, c, w, d):
+    def cycle(self, testList, startState, doOnly, c, w, d):
         """
         Cycle through all tests, visiting first all the ones in the current state, then
         moving on to another state, and so on until all in-state and state-change tests
@@ -797,14 +829,21 @@ class TestingSet:
             nextStateChangeTest = None
             for test in testList:
                 if not doneDict.has_key(test): doneDict[test] = 0
-                if (test not in doneDict
-                    or doneDict[test] < ntrialsDict[test.__class__.__name__]) and test.startState == state:
-                    allDone = False
+                # Use "test" if 
+                # (1) test count hasn't surpassed specified count, and
+                # (2) state doesn't change, and
+                # (3) either we're doing all standard tests, or this test has been
+                #     specified explicitly on the command line
+                # otherwise use next state change
+                if (doneDict[test] < self.ntrialsDict[test.__class__.__name__]) \
+                       and test.startState == state:
                     nextTest = test
-                    if test.endState == state:
+                    if test.endState == state and (not doOnly or self.dontSkipDict.has_key(test.__class__.__name__)):
+                        allDone = False
                         allDoneThisState = False
                         break
                     else:
+                        allDone = False
                         nextStateChangeTest = test
             if allDone: return
             elif allDoneThisState:
@@ -828,7 +867,7 @@ class TestingSet:
             if self.ntrialsDict[t.__class__.__name__] > 1 and t.changesState():
                 raise RepeatedTestChangesStateException("Test %s changes DOM state, "
                                                         % t.__class__.__name__ + "cannot be repeated.")
-        for test in self.cycle(testObjList, self.ntrialsDict, startState, c, w, d):
+        for test in self.cycle(testObjList, startState, self.doOnly, c, w, d):
             test.run(dor.fd)
             if(test.startState != test.endState): # If state change, flush buffers etc. to get clean IO
                 dor.close()
@@ -908,6 +947,10 @@ def main():
                  dest="setDuration",  help="Set duration in secs of a test, " + \
                                            "e.g. '-d SNTest 1000' (repeatable)")
 
+    p.add_option("-o", "--only-test",
+                 action="store_true",
+                 dest="doOnly",       help="Do same-state tests only when specified by -n option")
+    
     p.add_option("-n", "--repeat-count",
                  action="append",     type="string",    nargs=2,
                  dest="repeatCount",  help="Set # of times to run a test, "   + \
@@ -917,6 +960,7 @@ def main():
                    doHVTests        = False,
                    setDuration      = None,
                    repeatCount      = None,
+                   doOnly           = False,
                    listTests        = False)
     opt, args = p.parse_args()
 
@@ -925,7 +969,7 @@ def main():
     ListOfTests = [IcebootToConfigboot, CheckConfigboot, ConfigbootToIceboot,
                    CheckIceboot, SoftbootCycle, IcebootToDomapp, 
                    GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
-                   SNTest, 
+                   SNTest, SetFastMoniIvalTest,
                    DomappToIceboot, IcebootToEcho, EchoTest, EchoCommResetTest, EchoToIceboot]
 
     if opt.doHVTests:
@@ -940,7 +984,8 @@ def main():
         print "No driver present? ('%s')" % e
         raise SystemExit
     
-    testSet = TestingSet(domDict, opt.stopFail)
+    testSet = TestingSet(domDict, opt.doOnly, opt.stopFail)
+
     for t in ListOfTests:
         testSet.add(t)
 

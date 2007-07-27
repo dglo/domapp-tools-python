@@ -307,9 +307,9 @@ class DOMApp:
     def selectATWD(self, atwd):
         self.sendMsg(DOM_SLOW_CONTROL, DSC_SELECT_ATWD, data=pack("B", atwd))
        
-    def setMonitoringIntervals(self, hwInt=40000000, cfInt=1200000000):
+    def setMonitoringIntervals(self, hwInt=10, cfInt=300, fastInt=1):
         self.sendMsg(DATA_ACCESS, DATA_ACC_SET_MONI_IVAL,
-                     data=pack(">2I", hwInt, cfInt)
+                     data=pack(">3I", hwInt, cfInt, fastInt)
                      )
 
     def collectPedestals(self, natwd0=100, natwd1=100, nfadc=100):
