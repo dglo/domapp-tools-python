@@ -5,6 +5,7 @@
 # Started: Wed May  9 21:57:21 2007
 from __future__ import generators
 import time, threading, os, sys
+
 from re import search, sub
 
 from domapptools.dor import *
@@ -868,7 +869,10 @@ class TestingSet:
                 raise RepeatedTestChangesStateException("Test %s changes DOM state, "
                                                         % t.__class__.__name__ + "cannot be repeated.")
         for test in self.cycle(testObjList, startState, self.doOnly, c, w, d):
+            tstart = time.strftime("%d %b %Y %H:%M:%S", time.localtime())
+            t0     = time.time()
             test.run(dor.fd)
+            dt     = "%2.2f" % (time.time()-t0)
             if(test.startState != test.endState): # If state change, flush buffers etc. to get clean IO
                 dor.close()
                 dor.open()
@@ -878,9 +882,9 @@ class TestingSet:
             self.counterLock.acquire()
             runLenStr = ""
             if test.runLength: runLenStr = "%d sec " % test.runLength
-            print "%s%s%s %s->%s %s%s: %s %s" % (c,w,d, test.startState,
-                                                      test.endState, runLenStr,
-                                                      test.name(), test.result, test.summary)
+            print "%s%s%s %s %s->%s %s %s%s: %s %s" % (c,w,d, tstart, test.startState,
+                                                       test.endState, dt, runLenStr,
+                                                       test.name(), test.result, test.summary)
             if test.result == "PASS":
                 self.numpassed += 1
             else:
