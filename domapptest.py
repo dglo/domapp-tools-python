@@ -472,6 +472,7 @@ class FastMoniIvalTest(DOMAppHVTest):
         fastMoniRecordCount = 0
         hwMoniRecordCount   = 0
         expectedRecordCount = self.runLength/fastInterval
+        nhits               = 0
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
@@ -479,7 +480,8 @@ class FastMoniIvalTest(DOMAppHVTest):
             domapp.setPulser(mode=BEACON, rate=4)
             self.setHV(domapp, NOMINAL_HV_VOLTS)
             domapp.selectMUX(255)
-            domapp.setEngFormat(0, 4*(2,), (32, 0, 0, 0))
+            domapp.setDataFormat(2)
+            domapp.setCompressionMode(2)            
             domapp.setMonitoringIntervals(hwInt=fastInterval, fastInt=fastInterval)
             domapp.startRun()
         except Exception, e:
@@ -490,6 +492,19 @@ class FastMoniIvalTest(DOMAppHVTest):
 
         t = MiniTimer(self.runLength*1000)
         while not t.expired():
+            # Get hit data, to cause hit counters to fill
+            try:
+                hitdata = domapp.getWaveformData()
+                if len(hitdata) > 0:
+                    hitBuf = DeltaHitBuf(hitdata) # Does basic integrity check
+                    for hit in hitBuf.next():
+                        nhits += 1
+                        
+            except Exception, e:
+                self.result = "FAIL"
+                self.debugMsgs.append("GET WAVEFORM DATA FAILED: %s" % exc_string())
+                self.appendMoni(domapp)
+                break                                                                                                                                                
             # Moni data
             mlist = getLastMoniMsgs(domapp)
             # Make sure 'fast' records are present and agree with
@@ -506,8 +521,14 @@ class FastMoniIvalTest(DOMAppHVTest):
                 if(s1):
                     gotF = True
                     fastMoniRecordCount += 1
-                    fSPE = s1.group(1)
-                    fMPE = s1.group(2)
+                    fSPE  = s1.group(1)
+                    fMPE  = s1.group(2)
+                    fHits = int(s1.group(3))
+                    if(fHits != nhits):
+                        self.result = "FAIL"
+                        self.debugMsgs.append("ERROR: fast moni hit counter doesn't match " +
+                                              "read hit value (moni %d, hitreadout %d)" % (fHits, nhits))
+                    nhits = 0 # Reset in domapp, so reset here
                 if(s2):
                     gotHW = True
                     hwMoniRecordCount += 1
@@ -522,7 +543,7 @@ class FastMoniIvalTest(DOMAppHVTest):
                         self.result = "FAIL"
                     elif(not hwMPE or hwMPE != fMPE):
                         self.debugMsgs.append("ERROR: MPE values missing or disagree (%s %s)!" % (fMPE, hwMPE))
-                        self.result = "FAIL"                        
+                        self.result = "FAIL"
             
         if(abs(expectedRecordCount-fastMoniRecordCount) > tolerance):
             self.debugMsgs.append("Fast moni record rate mismatch: wanted %d, got %d (tolerance %d)"
@@ -531,6 +552,7 @@ class FastMoniIvalTest(DOMAppHVTest):
         if(hwMoniRecordCount == 0): # Make sure we had SOMETHING to compare to
             self.debugMsgs.append("ERROR: NO HW monitoring records available!")
             self.result = "FAIL"
+
         try:
             domapp.endRun()
             self.turnOffHV(domapp)
@@ -544,7 +566,7 @@ class FastMoniIvalTest(DOMAppHVTest):
                 pass
             self.appendMoni(domapp)
             return
-            
+
 class SNDeltaSPEHitTest(DOMAppHVTest):
     "Collect both SPE and SN data, make sure there are no gaps in SN data"
     def run(self, fd):
