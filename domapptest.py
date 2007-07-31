@@ -387,6 +387,11 @@ def unpackMoni(monidata):
         moniLen, moniType = unpack('>hh', monidata[0:4])
         if moniType == 0xCB: # ASCII message
             yield monidata[10:moniLen]
+        if moniType == 0xC8:
+            vals = unpack('>bx27HLL', monidata[10:74])
+            vals = [str(i) for i in vals]
+            txt = " ".join(vals)
+            yield "[HW EVT %s]" % txt
         if moniType == 0xCA:
             kind,    = unpack('b', monidata[10])
             subkind, = unpack('b', monidata[11])
@@ -452,32 +457,94 @@ class DOMIDTest(QuickDOMAppTest):
             self.debugMsgs.append(exc_string())
 
 
-class SetFastMoniIvalTest(DOMAppTest):
-    "Set fast monitoring interval and make sure rate of generated records is roughly correct"
+class FastMoniIvalTest(DOMAppHVTest):
+    """
+    Set fast monitoring interval and make sure rate of generated records
+    is roughly correct; check that SPE and MPE scalers match those in
+    so-called 'Hardware State Events'
+    """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         self.result = "PASS"
-        domapp.resetMonitorBuffer()
-        setDefaultDACs(domapp)
+        NOMINAL_HV_VOLTS    = 900 # Is this the best value?
         fastInterval        = 2 # Number of seconds delay between records
         tolerance           = 2 # Want to be within this many records of expected
         fastMoniRecordCount = 0
-        domapp.setMonitoringIntervals(fastInt=fastInterval)
+        hwMoniRecordCount   = 0
         expectedRecordCount = self.runLength/fastInterval
+        try:
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.setTriggerMode(2)
+            domapp.setPulser(mode=BEACON, rate=4)
+            self.setHV(domapp, NOMINAL_HV_VOLTS)
+            domapp.selectMUX(255)
+            domapp.setEngFormat(0, 4*(2,), (32, 0, 0, 0))
+            domapp.setMonitoringIntervals(hwInt=fastInterval, fastInt=fastInterval)
+            domapp.startRun()
+        except Exception, e:
+            self.result = "FAIL"
+            self.debugMsgs.append(exc_string())
+            self.appendMoni(domapp)
+            return
+
         t = MiniTimer(self.runLength*1000)
         while not t.expired():
             # Moni data
             mlist = getLastMoniMsgs(domapp)
+            # Make sure 'fast' records are present and agree with
+            # 'hw' moni events.
+            fSPE     = None
+            fMPE     = None
+            hwSPE    = None
+            hwMPE    = None
+            gotF     = False
+            gotHW    = False
             for m in mlist:
-                s = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
-                if(s): fastMoniRecordCount += 1
+                s1 = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
+                s2 = re.search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
+                if(s1):
+                    gotF = True
+                    fastMoniRecordCount += 1
+                    fSPE = s1.group(1)
+                    fMPE = s1.group(2)
+                if(s2):
+                    gotHW = True
+                    hwMoniRecordCount += 1
+                    hwSPE = s2.group(1)
+                    hwMPE = s2.group(2)
                 self.debugMsgs.append(m)
+                if(gotF and gotHW):
+                    gotF = False
+                    gotHW = False
+                    if(hwSPE != fSPE):
+                        self.debugMsgs.append("ERROR: SPE values missing or disagree (%s %s)!" % (fSPE, hwSPE))
+                        self.result = "FAIL"
+                    elif(not hwMPE or hwMPE != fMPE):
+                        self.debugMsgs.append("ERROR: MPE values missing or disagree (%s %s)!" % (fMPE, hwMPE))
+                        self.result = "FAIL"                        
+            
         if(abs(expectedRecordCount-fastMoniRecordCount) > tolerance):
             self.debugMsgs.append("Fast moni record rate mismatch: wanted %d, got %d (tolerance %d)"
                                   % (expectedRecordCount, fastMoniRecordCount, tolerance))
             self.result = "FAIL"
-        
-    
+        if(hwMoniRecordCount == 0): # Make sure we had SOMETHING to compare to
+            self.debugMsgs.append("ERROR: NO HW monitoring records available!")
+            self.result = "FAIL"
+        try:
+            domapp.endRun()
+            self.turnOffHV(domapp)
+        except Exception, e:
+            self.result = "FAIL"
+            self.debugMsgs.append(exc_string())
+            try:
+                self.turnOffHV(domapp)
+                domapp.endRun()
+            except:
+                pass
+            self.appendMoni(domapp)
+            return
+            
 class SNDeltaSPEHitTest(DOMAppHVTest):
     "Collect both SPE and SN data, make sure there are no gaps in SN data"
     def run(self, fd):
@@ -658,7 +725,9 @@ class PedestalStabilityTest(DOMAppHVTest):
             return
 
 class DeltaCompressionBeaconTest(DOMAppTest):
-    "Make sure delta-compressed beacons have all four ATWD channels read out"
+    """
+    Make sure delta-compressed beacons have all four ATWD channels read out
+    """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         self.result = "PASS"
@@ -682,6 +751,7 @@ class DeltaCompressionBeaconTest(DOMAppTest):
 
         # collect data
         t = MiniTimer(self.runLength * 1000)
+        gotData = False
         while not t.expired():
             self.appendMoni(domapp)
 
@@ -690,6 +760,7 @@ class DeltaCompressionBeaconTest(DOMAppTest):
             try:
                 hitdata = domapp.getWaveformData()
                 if len(hitdata) > 0:
+                    gotData = True
                     hitBuf = DeltaHitBuf(hitdata)
                     for hit in hitBuf.next():
                         if hit.is_beacon and hit.natwdch < 3:
@@ -715,6 +786,11 @@ class DeltaCompressionBeaconTest(DOMAppTest):
             self.debugMsgs.append("END RUN FAILED: %s" % exc_string())
             self.appendMoni(domapp)
             
+        # Make sure we got SOMETHING....
+        if not gotData:
+            self.result = "FAIL"
+            self.debugMsgs.append("Didn't get any hit data!")
+
 class SNTest(DOMAppTest):
     "Make sure no gaps are present in SN data"    
     def run(self, fd):
@@ -969,16 +1045,17 @@ def main():
     opt, args = p.parse_args()
 
     startState = DOMTest.STATE_ICEBOOT # FIXME: what if it's not?
-    
-    ListOfTests = [IcebootToConfigboot, CheckConfigboot, ConfigbootToIceboot,
-                   CheckIceboot, SoftbootCycle, IcebootToDomapp, 
-                   GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
-                   SNTest, SetFastMoniIvalTest,
-                   DomappToIceboot, IcebootToEcho, EchoTest, EchoCommResetTest, EchoToIceboot]
 
+
+    ListOfTests = [IcebootToConfigboot, CheckConfigboot, ConfigbootToIceboot,
+                   CheckIceboot, SoftbootCycle, IcebootToDomapp]
+    # Domapp tests have to be kept together for the
+    # -o option to work correctly (FIXME)
+    ListOfTests.extend([GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest, SNTest])
     if opt.doHVTests:
-        ListOfTests.append(PedestalStabilityTest)
-        ListOfTests.append(SNDeltaSPEHitTest)
+        ListOfTests.extend([FastMoniIvalTest, PedestalStabilityTest, SNDeltaSPEHitTest])
+
+    ListOfTests.extend([DomappToIceboot, IcebootToEcho, EchoTest, EchoCommResetTest, EchoToIceboot])
 
     try:
         dor = Driver()
