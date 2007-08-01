@@ -38,7 +38,7 @@ class DOMTest:
 
         self.runLength  = runLength
         self.debugMsgs  = []
-        self.result     = None
+        self.result     = "PASS"
         self.summary    = ""
 
     def appendMoni(self, domapp):
@@ -68,6 +68,10 @@ class DOMTest:
     
     def run(self, fd): pass
 
+    def fail(self, str):
+        self.result = "FAIL"
+        self.debugMsgs.append(str)
+        
 class ConfigbootToIceboot(DOMTest):
     "Make sure transition from configboot to iceboot succeeds"
     def __init__(self, card, wire, dom, dor):
@@ -76,17 +80,13 @@ class ConfigbootToIceboot(DOMTest):
     def run(self, fd):
         ok, txt = self.dor.configbootToIceboot2()
         if not ok:
-            self.result = "FAIL"
-            self.debugMsgs.append("Could not transition into iceboot")
+            self.fail("Could not transition into iceboot")
             self.debugMsgs.append(txt)
         else:
             ok, txt = self.dor.isInIceboot2()
             if not ok:
-                self.result = "FAIL"
-                self.debugMsgs.append("check for iceboot prompt failed")
+                self.fail("check for iceboot prompt failed")
                 self.debugMsgs.append(txt)
-            else:
-                self.result = "PASS"
                         
 class DomappToIceboot(DOMTest):
     "Make sure (softboot) transition from domapp to iceboot succeeds"
@@ -97,11 +97,8 @@ class DomappToIceboot(DOMTest):
         self.dor.softboot()
         ok, txt = self.dor.isInIceboot2()
         if not ok:
-            self.result = "FAIL"
-            self.debugMsgs.append("check for iceboot prompt failed")
+            self.fail("check for iceboot prompt failed")
             self.debugMsgs.append(txt)
-        else:
-            self.result = "PASS"
 
 class EchoToIceboot(DOMTest):
     "Make sure (softboot) transition from echo-mode to iceboot succeeds"
@@ -112,11 +109,8 @@ class EchoToIceboot(DOMTest):
         self.dor.softboot()
         ok, txt = self.dor.isInIceboot2()
         if not ok:
-            self.result = "FAIL"
-            self.debugMsgs.append("check for iceboot prompt failed")
+            self.fail("check for iceboot prompt failed")
             self.debugMsgs.append(txt)
-        else:
-            self.result = "PASS"
     
 class IcebootToDomapp(DOMTest):
     "Make sure transition from iceboot to domapp succeeds"
@@ -126,12 +120,11 @@ class IcebootToDomapp(DOMTest):
     def run(self, fd):
         ok, txt = self.dor.icebootToDomapp2()
         if not ok:        
-            self.result = "FAIL"
-            self.debugMsgs.append("could not transition into domapp")
+            self.fail("could not transition into domapp")
             self.debugMsgs.append(txt)
         else:
             # FIXME - test w/ domapp message here
-            self.result = "PASS"
+            pass
 
 class CheckIceboot(DOMTest):
     "Make sure I'm in iceboot when I think I should be"
@@ -141,12 +134,8 @@ class CheckIceboot(DOMTest):
     def run(self, fd):
         ok, txt = self.dor.isInIceboot2()
         if not ok:
-            self.result = "FAIL"
-            self.debugMsgs.append("check for iceboot prompt failed")
+            self.fail("check for iceboot prompt failed")
             self.debugMsgs.append(txt)
-        else:
-            self.result = "PASS"
-
 
 class SoftbootCycle(DOMTest):
     """
@@ -162,16 +151,14 @@ class SoftbootCycle(DOMTest):
         self.result = "PASS"
         ok, txt = self.dor.isInIceboot2()
         if not ok:
-            self.result = "FAIL"
-            self.debugMsgs.append("first check for iceboot prompt failed")
+            self.fail("first check for iceboot prompt failed")
             self.debugMsgs.append(txt)
             return
 
         # Transition to domapp
         ok, txt = self.dor.icebootToDomapp2()
-        if not ok:        
-            self.result = "FAIL"
-            self.debugMsgs.append("could not transition into domapp")
+        if not ok:
+            self.fail("could not transition into domapp")
             self.debugMsgs.append(txt)
             return
 
@@ -180,8 +167,7 @@ class SoftbootCycle(DOMTest):
         try:
             domapp.getDomappVersion()
         except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append(exc_string())
+            self.fail(exc_string())
             return
 
         # Collect driver/FPGA stats
@@ -209,13 +195,9 @@ class SoftbootCycle(DOMTest):
         # Verify iceboot again
         ok, txt = self.dor.isInIceboot2()
         if not ok:
-            self.result = "FAIL"
-            self.debugMsgs.append("second check for iceboot prompt failed")
+            self.fail("second check for iceboot prompt failed")
             self.debugMsgs.append(txt)
             return
-        else:
-            self.result = "PASS"
-            
 
 class IcebootToConfigboot(DOMTest):
     "Make sure transition from iceboot to configboot succeeds"
@@ -225,17 +207,13 @@ class IcebootToConfigboot(DOMTest):
     def run(self, fd):
         ok, txt = self.dor.icebootToConfigboot2()
         if not ok:
-            self.result = "FAIL"
-            self.debugMsgs.append("could not transition into configboot")
+            self.fail("could not transition into configboot")
             self.debugMsgs.append(txt)
         else:
             ok, txt =  self.dor.isInConfigboot2()
             if not ok:
-                self.result = "FAIL"
-                self.debugMsgs.append("check for iceboot prompt failed")
+                self.fail("check for iceboot prompt failed")
                 self.debugMsgs.append(txt)
-            else:
-                self.result = "PASS"
 
 class CheckConfigboot(DOMTest):
     "Check that I'm really in configboot when I think I am"
@@ -245,11 +223,8 @@ class CheckConfigboot(DOMTest):
     def run(self, fd):
         ok, txt = self.dor.isInConfigboot2()
         if not ok:
-            self.result = "FAIL"
-            self.debugMsgs.append("check for iceboot prompt failed")
+            self.fail("check for iceboot prompt failed")
             self.debugMsgs.append(txt)
-        else:
-            self.result = "PASS"
 
 class IcebootToEcho(DOMTest):
     "Make sure transition from iceboot to echo-mode succeeds"
@@ -259,11 +234,8 @@ class IcebootToEcho(DOMTest):
     def run(self, fd):
         ok, txt = self.dor.icebootToEcho2()
         if not ok:
-            self.result = "FAIL"
-            self.debugMsgs.append("could not transition into echo-mode")
+            self.fail("could not transition into echo-mode")
             self.debugMsgs.append(txt)
-        else:
-            self.result = "PASS"
 
 class EchoTest(DOMTest):
     "Perform echo test of 100 variable-length random packets, when DOM is in echo mode"
@@ -274,12 +246,10 @@ class EchoTest(DOMTest):
         numPackets    = 10
         maxPacketSize = 4092
         timeout       = 30*1000 # Generous 30-second timeout
-        self.result   = "PASS"
         for p in xrange(0, numPackets):
             ok, txt = self.dor.echoRandomPacket2(maxPacketSize, timeout)
             if not ok:
-                self.result = "FAIL"
-                self.debugMsgs.append("echo of %dth packet failed" % p)
+                self.fail("echo of %dth packet failed" % p)
                 self.debugMsgs.append(txt)
                 return
 
@@ -292,13 +262,11 @@ class EchoCommResetTest(DOMTest):
         numPackets    = 10
         maxPacketSize = 4092
         timeout       = 30*1000 # Generous 30-second timeout
-        self.result   = "PASS"
         
         for p in xrange(0, numPackets-1):
             ok, txt = self.dor.echoRandomPacket2(maxPacketSize, timeout)
             if not ok:
-                self.result = "FAIL"
-                self.debugMsgs.append("echo of %dth packet failed" % p)
+                self.fail("echo of %dth packet failed" % p)
                 self.debugMsgs.append(txt)
                 return
             else:
@@ -308,8 +276,7 @@ class EchoCommResetTest(DOMTest):
         # Do the last (n-1th) echo test
         ok, txt = self.dor.echoRandomPacket2(maxPacketSize, timeout)
         if not ok:
-            self.result = "FAIL"
-            self.debugMsgs.append("echo of %dth packet failed" % p)
+            self.fail("echo of %dth packet failed" % p)
             self.debugMsgs.append(txt)
             
 ############################## DOMAPP TEST BASE CLASSES ############################
@@ -440,10 +407,8 @@ class GetDomappRelease(QuickDOMAppTest):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         try:
             self.summary = domapp.getDomappVersion()
-            self.result = "PASS"
         except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append(exc_string())
+            self.fail(exc_string())
 
 class DOMIDTest(QuickDOMAppTest):
     "Make sure I can get DOM ID from domapp"
@@ -451,10 +416,8 @@ class DOMIDTest(QuickDOMAppTest):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         try:
             self.summary = domapp.getMainboardID()
-            self.result = "PASS"
         except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append(exc_string())
+            self.fail(exc_string())
 
 
 class FastMoniIvalTest(DOMAppHVTest):
@@ -465,14 +428,14 @@ class FastMoniIvalTest(DOMAppHVTest):
     """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
-        self.result = "PASS"
         NOMINAL_HV_VOLTS    = 900 # Is this the best value?
         fastInterval        = 2 # Number of seconds delay between records
-        tolerance           = 2 # Want to be within this many records of expected
+        tolerance           = 4 # Want to be within this many records of expected
         fastMoniRecordCount = 0
         hwMoniRecordCount   = 0
         expectedRecordCount = self.runLength/fastInterval
-        nhits               = 0
+        hitsMonitored       = 0
+        hitsReadOut         = 0
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
@@ -485,24 +448,27 @@ class FastMoniIvalTest(DOMAppHVTest):
             domapp.setMonitoringIntervals(hwInt=fastInterval, fastInt=fastInterval)
             domapp.startRun()
         except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append(exc_string())
+            self.fail(exc_string())
             self.appendMoni(domapp)
             return
 
         t = MiniTimer(self.runLength*1000)
+
+        def countDeltaHits(): # Mini functionlette to count compressed hits
+            ret = 0
+            hitdata = domapp.getWaveformData()
+            if len(hitdata) > 0:
+                hitBuf = DeltaHitBuf(hitdata) # Does basic integrity check
+                for hit in hitBuf.next():
+                    ret += 1
+            return ret
+        
         while not t.expired():
             # Get hit data, to cause hit counters to fill
             try:
-                hitdata = domapp.getWaveformData()
-                if len(hitdata) > 0:
-                    hitBuf = DeltaHitBuf(hitdata) # Does basic integrity check
-                    for hit in hitBuf.next():
-                        nhits += 1
-                        
+                hitsReadOut += countDeltaHits()
             except Exception, e:
-                self.result = "FAIL"
-                self.debugMsgs.append("GET WAVEFORM DATA FAILED: %s" % exc_string())
+                self.fail("GET WAVEFORM DATA FAILED: %s" % exc_string())
                 self.appendMoni(domapp)
                 break                                                                                                                                                
             # Moni data
@@ -518,47 +484,38 @@ class FastMoniIvalTest(DOMAppHVTest):
             for m in mlist:
                 s1 = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
                 s2 = re.search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
-                if(s1):
+                if s1:
                     gotF = True
                     fastMoniRecordCount += 1
                     fSPE  = s1.group(1)
                     fMPE  = s1.group(2)
+                    hitsMonitored += int(s1.group(3))
                     fHits = int(s1.group(3))
-                    if(fHits != nhits):
-                        self.result = "FAIL"
-                        self.debugMsgs.append("ERROR: fast moni hit counter doesn't match " +
-                                              "read hit value (moni %d, hitreadout %d)" % (fHits, nhits))
-                    nhits = 0 # Reset in domapp, so reset here
-                if(s2):
+                if s2:
                     gotHW = True
                     hwMoniRecordCount += 1
                     hwSPE = s2.group(1)
                     hwMPE = s2.group(2)
                 self.debugMsgs.append(m)
-                if(gotF and gotHW):
+                if gotF and gotHW:
                     gotF = False
                     gotHW = False
                     if(hwSPE != fSPE):
-                        self.debugMsgs.append("ERROR: SPE values missing or disagree (%s %s)!" % (fSPE, hwSPE))
-                        self.result = "FAIL"
+                        self.fail("ERROR: SPE values missing or disagree (%s %s)!" % (fSPE, hwSPE))
                     elif(not hwMPE or hwMPE != fMPE):
-                        self.debugMsgs.append("ERROR: MPE values missing or disagree (%s %s)!" % (fMPE, hwMPE))
-                        self.result = "FAIL"
+                        self.fail("ERROR: MPE values missing or disagree (%s %s)!" % (fMPE, hwMPE))
             
         if(abs(expectedRecordCount-fastMoniRecordCount) > tolerance):
-            self.debugMsgs.append("Fast moni record rate mismatch: wanted %d, got %d (tolerance %d)"
-                                  % (expectedRecordCount, fastMoniRecordCount, tolerance))
-            self.result = "FAIL"
+            self.fail("Fast moni record rate mismatch: wanted %d, got %d (tolerance %d)"
+                      % (expectedRecordCount, fastMoniRecordCount, tolerance))
         if(hwMoniRecordCount == 0): # Make sure we had SOMETHING to compare to
-            self.debugMsgs.append("ERROR: NO HW monitoring records available!")
-            self.result = "FAIL"
+            self.fail("ERROR: NO HW monitoring records available!")
 
         try:
             domapp.endRun()
             self.turnOffHV(domapp)
         except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append(exc_string())
+            self.fail(exc_string())
             try:
                 self.turnOffHV(domapp)
                 domapp.endRun()
@@ -567,11 +524,30 @@ class FastMoniIvalTest(DOMAppHVTest):
             self.appendMoni(domapp)
             return
 
+        # Make sure hits read out equals hits monitored; first, get last monis
+        try:
+            hitsReadOut += countDeltaHits()
+        except Exception, e:
+            self.fail("GET WAVEFORM DATA FAILED: %s" % exc_string())
+            self.appendMoni(domapp)
+            return
+
+        time.sleep(fastInterval+1) # Make sure we get our last moni events!
+        
+        mlist = getLastMoniMsgs(domapp)
+        for m in mlist:
+            s1 = re.search(r'^F \d+ \d+ (\d+) \d+$', m)
+            if s1:
+                hitsMonitored += int(s1.group(1))
+                            
+        if hitsReadOut != hitsMonitored:
+            self.fail("Total hits monitored (%d) doesn't equal total hits read out (%d)"
+                      % (hitsReadOut, hitsMonitored))
+
 class SNDeltaSPEHitTest(DOMAppHVTest):
     "Collect both SPE and SN data, make sure there are no gaps in SN data"
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)        
-        self.result = "PASS"
         NOMINAL_HV_VOLTS = 900 # Is this the best value?
         try:
             domapp.resetMonitorBuffer()
@@ -604,8 +580,7 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
                         nbDelta += len(hitdata)
                         hitBuf = DeltaHitBuf(hitdata) # Does basic integrity check
                 except Exception, e:
-                    self.result = "FAIL"
-                    self.debugMsgs.append("GET WAVEFORM DATA FAILED: %s" % exc_string())
+                    self.fail("GET WAVEFORM DATA FAILED: %s" % exc_string())
                     self.appendMoni(domapp)
                     break
 
@@ -617,16 +592,14 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
                         self.debugMsgs.append("Got %d sn bytes" % len(sndata))
                         self.debugMsgs.append("Delta hits: %d bytes total" % nbDelta)
                     except Exception, e:
-                        self.result = "FAIL"
-                        self.debugMsgs.append("GET SN DATA FAILED: %s" % exc_string())
+                        self.fail("GET SN DATA FAILED: %s" % exc_string())
                         self.appendMoni(domapp)
                         break
 
                     try:
                         prevClock, prevBins = self.checkSNdata(sndata, prevClock, prevBins)
                     except Exception, e:
-                        self.result = "FAIL"
-                        self.debugMsgs.append("SN data check failed: '%s'" % e)
+                        self.fail("SN data check failed: '%s'" % e)
                         self.appendMoni(domapp)
                         break
                     
@@ -637,8 +610,7 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
             self.turnOffHV(domapp)
 
         except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append(exc_string())
+            self.fail(exc_string())
             try:
                 self.turnOffHV(domapp)
                 domapp.endRun()
@@ -651,7 +623,6 @@ class PedestalStabilityTest(DOMAppHVTest):
     "Measure pedestal stability by taking an average over several tries"
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)        
-        self.result = "PASS"
         NOMINAL_HV_VOLTS   = 800 # Is this the best value?
         ATWD_PEDS_PER_LOOP = 100 
         FADC_PEDS_PER_LOOP = 200 
@@ -741,8 +712,7 @@ class PedestalStabilityTest(DOMAppHVTest):
                 self.turnOffHV(domapp)
             except:
                 pass
-            self.result = "FAIL"
-            self.debugMsgs.append(exc_string())
+            self.fail(exc_string())
             self.appendMoni(domapp)
             return
 
@@ -752,7 +722,6 @@ class DeltaCompressionBeaconTest(DOMAppTest):
     """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
-        self.result = "PASS"
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
@@ -766,8 +735,7 @@ class DeltaCompressionBeaconTest(DOMAppTest):
             domapp.startRun()
         # fixme - collect moni for ALL failures
         except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append(exc_string())
+            self.fail(exc_string())
             self.appendMoni(domapp)
             return
 
@@ -791,33 +759,29 @@ class DeltaCompressionBeaconTest(DOMAppTest):
                             good = False
                             break
             except Exception, e:
-                self.result = "FAIL"
-                self.debugMsgs.append("GET WAVEFORM DATA FAILED: %s" % exc_string())
+                self.fail("GET WAVEFORM DATA FAILED: %s" % exc_string())
                 self.appendMoni(domapp)
                 break
             
             if not good:
-                self.result = "FAIL"
+                self.fail("No hit data was retrieved!")
                 break
 
         # end run
         try:
             domapp.endRun()
         except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append("END RUN FAILED: %s" % exc_string())
+            self.fail("END RUN FAILED: %s" % exc_string())
             self.appendMoni(domapp)
             
         # Make sure we got SOMETHING....
         if not gotData:
-            self.result = "FAIL"
-            self.debugMsgs.append("Didn't get any hit data!")
+            self.fail("Didn't get any hit data!")
 
 class SNTest(DOMAppTest):
     "Make sure no gaps are present in SN data"    
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
-        self.result = "PASS"
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
@@ -829,8 +793,7 @@ class SNTest(DOMAppTest):
             domapp.setMonitoringIntervals()
             domapp.startRun()
         except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append(exc_string())
+            self.fail(exc_string())
             self.appendMoni(domapp)
             return
             
@@ -845,16 +808,14 @@ class SNTest(DOMAppTest):
             try:
                 sndata = domapp.getSupernovaData()
             except Exception, e:
-                self.result = "FAIL"
-                self.debugMsgs.append("GET SN DATA FAILED: %s" % exc_string())
+                self.fail("GET SN DATA FAILED: %s" % exc_string())
                 self.appendMoni(domapp)
                 break
 
             try:
                 prevClock, prevBins = self.checkSNdata(sndata, prevClock, prevBins)
             except Exception, e:
-                self.result = "FAIL"
-                self.debugMsgs.append("SN data check failed: '%s'" % e)
+                self.fail("SN data check failed: '%s'" % e)
                 self.appendMoni(domapp)
                 break
 
@@ -868,8 +829,7 @@ class SNTest(DOMAppTest):
         try:
             domapp.endRun()
         except Exception, e:
-            self.result = "FAIL"
-            self.debugMsgs.append("END RUN FAILED: %s" % exc_string())
+            self.fail("END RUN FAILED: %s" % exc_string())
             self.appendMoni(domapp)
 
 class TestNotFoundException(Exception): pass
