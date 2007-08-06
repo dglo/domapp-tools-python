@@ -886,7 +886,7 @@ class TestNotFoundException(Exception): pass
 
 class TestingSet:
     "Class for running multiple tests on a group of DOMs in parallel"
-    def __init__(self, domDict, doOnly=False, stopOnFail=False, useDomapp=False):
+    def __init__(self, domDict, doOnly=False, domappOnly=False, stopOnFail=False, useDomapp=None):
         self.domDict      = domDict
         self.testList     = []
         self.durationDict = {}
@@ -900,6 +900,7 @@ class TestingSet:
         self.counterLock  = threading.Lock()
         self.stopOnFail   = stopOnFail
         self.useDomapp    = useDomapp
+        self.domappOnly   = domappOnly
 
     def add(self, test):
         self.testList.append(test)
@@ -923,7 +924,7 @@ class TestingSet:
                 found = True
         if not found: raise TestNotFoundException("test name %s not defined" % testName)
 
-    def cycle(self, testList, startState, doOnly, c, w, d):
+    def cycle(self, testList, startState, doOnly, domappOnly, c, w, d):
         """
         Cycle through all tests, visiting first all the ones in the current state, then
         moving on to another state, and so on until all in-state and state-change tests
@@ -939,6 +940,11 @@ class TestingSet:
             nextStateChangeTest = None
             for test in testList:
                 if not doneDict.has_key(test): doneDict[test] = 0
+                # Skip non-domapp tests if required:
+                if domappOnly \
+                       and test.startState != DOMTest.STATE_DOMAPP \
+                       and test.endState != DOMTest.STATE_DOMAPP:
+                    continue
                 # Use "test" if 
                 # (1) test count hasn't surpassed specified count, and
                 # (2) state doesn't change, and
@@ -948,7 +954,9 @@ class TestingSet:
                 if (doneDict[test] < self.ntrialsDict[test.__class__.__name__]) \
                        and test.startState == state:
                     nextTest = test
-                    if test.endState == state and (not doOnly or self.dontSkipDict.has_key(test.__class__.__name__)):
+                    if test.endState == state \
+                           and (not doOnly
+                                or self.dontSkipDict.has_key(test.__class__.__name__)):
                         allDone = False
                         allDoneThisState = False
                         break
@@ -980,7 +988,7 @@ class TestingSet:
             if self.ntrialsDict[t.__class__.__name__] > 1 and t.changesState():
                 raise RepeatedTestChangesStateException("Test %s changes DOM state, "
                                                         % t.__class__.__name__ + "cannot be repeated.")
-        for test in self.cycle(testObjList, startState, self.doOnly, c, w, d):
+        for test in self.cycle(testObjList, startState, self.doOnly, self.domappOnly, c, w, d):
             tstart = time.strftime("%d %b %Y %H:%M:%S", time.localtime())
             t0     = time.time()
             
@@ -1077,12 +1085,16 @@ def main():
                  action="store",      type="string",
                  dest="uploadApp",    help="Upload ARM application to execute " +\
                                            "instead of using flash image")
+    p.add_option("-y", "--domapp-only",
+                 action="store_true",
+                 dest="domappOnly",   help="Only do domapp-related tests (including state changes)")
     
     p.set_defaults(stopFail         = False,
                    doHVTests        = False,
                    setDuration      = None,
                    repeatCount      = None,
                    doOnly           = False,
+                   domappOnly       = False,
                    uploadApp        = None,
                    listTests        = False)
     opt, args = p.parse_args()
@@ -1121,7 +1133,7 @@ def main():
         print "File %s does not exist!" % opt.uploadApp
         raise SystemExit
     
-    testSet = TestingSet(domDict, doOnly=opt.doOnly,
+    testSet = TestingSet(domDict, doOnly=opt.doOnly, domappOnly=opt.domappOnly,
                          stopOnFail=opt.stopFail, useDomapp=opt.uploadApp)
 
     for t in ListOfTests:
