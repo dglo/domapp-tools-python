@@ -73,7 +73,9 @@ class DOMTest:
         self.debugMsgs.append(str)
         
 class ConfigbootToIceboot(DOMTest):
-    "Make sure transition from configboot to iceboot succeeds"
+    """
+    Make sure transition from configboot to iceboot succeeds
+    """
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_CONFIGBOOT, end=DOMTest.STATE_ICEBOOT)
@@ -89,7 +91,9 @@ class ConfigbootToIceboot(DOMTest):
                 self.debugMsgs.append(txt)
                         
 class DomappToIceboot(DOMTest):
-    "Make sure (softboot) transition from domapp to iceboot succeeds"
+    """
+    Make sure (softboot) transition from domapp to iceboot succeeds
+    """
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_ICEBOOT)
@@ -101,7 +105,9 @@ class DomappToIceboot(DOMTest):
             self.debugMsgs.append(txt)
 
 class EchoToIceboot(DOMTest):
-    "Make sure (softboot) transition from echo-mode to iceboot succeeds"
+    """
+    Make sure (softboot) transition from echo-mode to iceboot succeeds
+    """
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ECHO, end=DOMTest.STATE_ICEBOOT)
@@ -113,7 +119,9 @@ class EchoToIceboot(DOMTest):
             self.debugMsgs.append(txt)
     
 class IcebootToDomapp(DOMTest):
-    "Make sure transition from iceboot to domapp succeeds"
+    """
+    Make sure transition from iceboot to domapp succeeds
+    """
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_DOMAPP)
@@ -127,7 +135,9 @@ class IcebootToDomapp(DOMTest):
             pass
 
 class CheckIceboot(DOMTest):
-    "Make sure I'm in iceboot when I think I should be"
+    """
+    Make sure I'm in iceboot when I think I should be
+    """
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ICEBOOT)
@@ -442,6 +452,7 @@ class FastMoniIvalTest(DOMAppHVTest):
             domapp.setTriggerMode(2)
             domapp.setPulser(mode=BEACON, rate=4)
             self.setHV(domapp, NOMINAL_HV_VOLTS)
+            domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 550)
             domapp.selectMUX(255)
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)            
@@ -543,6 +554,8 @@ class FastMoniIvalTest(DOMAppHVTest):
         if hitsReadOut != hitsMonitored:
             self.fail("Total hits monitored (%d) doesn't equal total hits read out (%d)"
                       % (hitsReadOut, hitsMonitored))
+
+        self.fail("Failing for no particular reason, just feeling a bit schleppedick")
 
 class SNDeltaSPEHitTest(DOMAppHVTest):
     "Collect both SPE and SN data, make sure there are no gaps in SN data"
@@ -716,6 +729,34 @@ class PedestalStabilityTest(DOMAppHVTest):
             self.appendMoni(domapp)
             return
 
+class PedestalMonitoringTest(DOMAppTest):
+    """
+    Make sure pedestal monitoring records are present and well-formatted when
+    pedestal generation occurs
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        pedcount = 0
+        try:
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.collectPedestals(100, 100, 200)
+            mlist = getLastMoniMsgs(domapp)
+            for m in mlist:
+                s = re.search(r'PED', m)
+                if s: pedcount += 1
+                self.debugMsgs.append(m)
+            
+        except Exception, e:
+            self.fail(exc_string())
+            self.appendMoni(domapp)
+            return
+
+        if pedcount < 99:
+            self.fail("Insufficient (%d) pedestal monitoring records" % pedcount)
+            self.appendMoni(domapp)
+        
+    
 class DeltaCompressionBeaconTest(DOMAppTest):
     """
     Make sure delta-compressed beacons have all four ATWD channels read out
@@ -1033,7 +1074,8 @@ def main():
                    CheckIceboot, SoftbootCycle, IcebootToDomapp]
     # Domapp tests have to be kept together for the
     # -o option to work correctly (FIXME)
-    ListOfTests.extend([GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest, SNTest])
+    ListOfTests.extend([GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
+                        SNTest, PedestalMonitoringTest])
     if opt.doHVTests:
         ListOfTests.extend([FastMoniIvalTest, PedestalStabilityTest, SNDeltaSPEHitTest])
 
