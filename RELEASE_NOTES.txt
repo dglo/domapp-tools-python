@@ -1,5 +1,6 @@
 Issues:
 
+0001683: domapptest.py - Add pedestal monitoring test
 0001648: Make tool to report GPS status of all DOR cards in parallel
 0001623: Add test which interleaves echo messages and comms resets
 0001511: DOMPrep.py - tolerate failures to open dev file
