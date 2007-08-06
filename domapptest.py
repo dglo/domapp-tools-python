@@ -14,6 +14,7 @@ from domapptools.domapp import *
 from domapptools.MiniDor import *
 from domapptools.DeltaHit import *
 
+from os.path import exists
 from math import sqrt
 import os.path
 import optparse
@@ -125,8 +126,16 @@ class IcebootToDomapp(DOMTest):
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_DOMAPP)
+        self.uploadFileName = None
+        
+    def setUploadFileName(self, f):
+        self.uploadFileName = f
+    
     def run(self, fd):
-        ok, txt = self.dor.icebootToDomapp2()
+        if self.uploadFileName: 
+            ok, txt = self.dor.uploadDomapp2(self.uploadFileName)
+        else:
+            ok, txt = self.dor.icebootToDomapp2()
         if not ok:        
             self.fail("could not transition into domapp")
             self.debugMsgs.append(txt)
@@ -877,7 +886,7 @@ class TestNotFoundException(Exception): pass
 
 class TestingSet:
     "Class for running multiple tests on a group of DOMs in parallel"
-    def __init__(self, domDict, doOnly=False, stopOnFail=False):
+    def __init__(self, domDict, doOnly=False, stopOnFail=False, useDomapp=False):
         self.domDict      = domDict
         self.testList     = []
         self.durationDict = {}
@@ -890,12 +899,13 @@ class TestingSet:
         self.numtests     = 0
         self.counterLock  = threading.Lock()
         self.stopOnFail   = stopOnFail
+        self.useDomapp    = useDomapp
 
     def add(self, test):
         self.testList.append(test)
         self.ntrialsDict[test.__name__] = 1
         self.durationDict[test] = None
-
+        
     def setDuration(self, testName, duration):
         found = False
         for t in self.testList:
@@ -959,6 +969,9 @@ class TestingSet:
         dor.open()
         for testName in self.testList:
             t = testName(c,w,d,dor)
+            # Tell the domapp test to use alternate domapp if required:
+            if t.__class__.__name__ == "IcebootToDomapp" and self.useDomapp:
+                t.setUploadFileName(self.useDomapp)
             # Set duration which may have been set explicitly by user:
             if self.durationDict[testName]:
                 t.setRunLength(self.durationDict[testName])
@@ -970,6 +983,7 @@ class TestingSet:
         for test in self.cycle(testObjList, startState, self.doOnly, c, w, d):
             tstart = time.strftime("%d %b %Y %H:%M:%S", time.localtime())
             t0     = time.time()
+            
             test.run(dor.fd)
             dt     = "%2.2f" % (time.time()-t0)
             if(test.startState != test.endState): # If state change, flush buffers etc. to get clean IO
@@ -1059,19 +1073,29 @@ def main():
                  dest="repeatCount",  help="Set # of times to run a test, "   + \
                                             "e.g. '-n SNTest 5' (repeatable) " + \
                                             "(non-state-changing tests only!)")
+    p.add_option("-a", "--upload-app",
+                 action="store",      type="string",
+                 dest="uploadApp",    help="Upload ARM application to execute " +\
+                                           "instead of using flash image")
+    
     p.set_defaults(stopFail         = False,
                    doHVTests        = False,
                    setDuration      = None,
                    repeatCount      = None,
                    doOnly           = False,
+                   uploadApp        = None,
                    listTests        = False)
     opt, args = p.parse_args()
 
     startState = DOMTest.STATE_ICEBOOT # FIXME: what if it's not?
 
 
-    ListOfTests = [IcebootToConfigboot, CheckConfigboot, ConfigbootToIceboot,
-                   CheckIceboot, SoftbootCycle, IcebootToDomapp]
+    ListOfTests = [IcebootToConfigboot,
+                   CheckConfigboot,
+                   ConfigbootToIceboot,
+                   CheckIceboot,
+                   SoftbootCycle,
+                   IcebootToDomapp]
     # Domapp tests have to be kept together for the
     # -o option to work correctly (FIXME)
     ListOfTests.extend([GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
@@ -1079,7 +1103,11 @@ def main():
     if opt.doHVTests:
         ListOfTests.extend([FastMoniIvalTest, PedestalStabilityTest, SNDeltaSPEHitTest])
 
-    ListOfTests.extend([DomappToIceboot, IcebootToEcho, EchoTest, EchoCommResetTest, EchoToIceboot])
+    ListOfTests.extend([DomappToIceboot,
+                        IcebootToEcho,
+                        EchoTest,
+                        EchoCommResetTest,
+                        EchoToIceboot])
 
     try:
         dor = Driver()
@@ -1088,8 +1116,13 @@ def main():
     except Exception, e:
         print "No driver present? ('%s')" % e
         raise SystemExit
+
+    if opt.uploadApp and not exists(opt.uploadApp):
+        print "File %s does not exist!" % opt.uploadApp
+        raise SystemExit
     
-    testSet = TestingSet(domDict, opt.doOnly, opt.stopFail)
+    testSet = TestingSet(domDict, doOnly=opt.doOnly,
+                         stopOnFail=opt.stopFail, useDomapp=opt.uploadApp)
 
     for t in ListOfTests:
         testSet.add(t)

@@ -5,6 +5,7 @@
 # Started: Thu May 31 20:19:00 2007
 
 import os.path, os
+from stat import *
 from exc_string import exc_string
 from minitimer import *
 from re import search
@@ -15,6 +16,7 @@ EAGAIN   = 11
 
 class ExpectStringNotFoundException(Exception): pass
 class WriteTimeoutException(Exception): pass
+class DomappFileNotFoundException(Exception): pass
 
 class MiniDor:
     def __init__(self, card=0, wire=0, dom='A'):
@@ -88,7 +90,7 @@ class MiniDor:
                 # break #<-- put this back to simulate failure
                 return True
             time.sleep(0.10)
-        raise ExpectStringNotFoundException("Expected string '%s' did not arrive in %d msec:\n%s" \
+        raise ExpectStringNotFoundException("Expected string '%s' did not arrive in %d msec: %s" \
                                             % (expectStr, timeoutMsec, contents))
 
     def writeTimeout(self, fd, msg, timeoutMsec):
@@ -145,6 +147,43 @@ class MiniDor:
         for i in xrange(0,l):
             p += pack("B", randint(0,255))
         return self.echo(p, timeout) # Give extra time in case of crappy comms
+    
+    def sendFile(self, fname, timeout):
+        "Dump file 'fname' to DOM"
+        f = open(fname)
+        while(True):
+            buf = f.read(1000)
+            if len(buf) == 0: break
+            try:
+                self.writeTimeout(self.fd, buf, timeout)
+            except WriteTimoutException, t:
+                return False
+        f.close()
+        return True
+            
+    def uploadDomapp2(self, domappFile):
+        """
+        Transition from iceboot to domapp by uploading 'domappFile',
+        uncompressing it and executing from iceboot.  Load domapp FPGA first.
+        """
+        if not os.path.exists(domappFile): raise DomappFileNotFoundException(domappFile)
+        size = os.stat(domappFile)[ST_SIZE]
+        if size <= 0: return (False, "size error: %s %d bytes" % (domappFile, size))
+        # Load domapp FPGA
+        ok, txt = self.se("s\" domapp.sbi.gz\" find if fpga-gz endif\r\n", ">", 5000)
+        if not ok: return (False, "%s\nFPGA reload failed!" % txt)
+        # Prepare iceboot to receive file
+        ok, txt = self.se("%d read-bin\r\n" % size, "read-bin", 5000)
+        if not ok: return (False, "%s\nread-bin failed!" % txt)
+        # Send file data
+        if not self.sendFile(domappFile, 5000): return (False, "send file failed!")
+        # See if iceboot is still ok
+        ok, txt = self.se("\r\n", ">", 5000)
+        if not ok: return (False, "%s\ndidn't get iceboot prompt!" % txt)
+        # Exec the new domapp program
+        ok, txt = self.se("gunzip exec\r\n", "exec", 5000)
+        if not ok: return (False, "%s\ndidn't get exec!" % txt)
+        return (True, "")
     
     def isInIceboot(self):         return self.isInIceboot2()[0]
     def isInConfigboot(self):      return self.isInConfigboot2()[0]
