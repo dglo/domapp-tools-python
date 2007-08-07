@@ -439,7 +439,7 @@ class DOMIDTest(QuickDOMAppTest):
             self.fail(exc_string())
 
 
-class FastMoniIvalTest(DOMAppHVTest):
+class FastMoniTest(DOMAppHVTest):
     """
     Set fast monitoring interval and make sure rate of generated records
     is roughly correct; check that SPE and MPE scalers match those in
@@ -738,7 +738,7 @@ class PedestalStabilityTest(DOMAppHVTest):
             self.appendMoni(domapp)
             return
 
-class PedestalMonitoringTest(DOMAppTest):
+class PedestalMonitoringTest(QuickDOMAppTest):
     """
     Make sure pedestal monitoring records are present and well-formatted when
     pedestal generation occurs
@@ -761,7 +761,7 @@ class PedestalMonitoringTest(DOMAppTest):
             self.appendMoni(domapp)
             return
 
-        if pedcount < 99:
+        if pedcount < 8:
             self.fail("Insufficient (%d) pedestal monitoring records" % pedcount)
             self.appendMoni(domapp)
         
@@ -1113,7 +1113,7 @@ def main():
     ListOfTests.extend([GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
                         SNTest, PedestalMonitoringTest])
     if opt.doHVTests:
-        ListOfTests.extend([FastMoniIvalTest, PedestalStabilityTest, SNDeltaSPEHitTest])
+        ListOfTests.extend([FastMoniTest, PedestalStabilityTest, SNDeltaSPEHitTest])
 
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,
