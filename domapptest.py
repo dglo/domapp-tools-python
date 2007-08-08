@@ -219,7 +219,9 @@ class SoftbootCycle(DOMTest):
             return
 
 class IcebootToConfigboot(DOMTest):
-    "Make sure transition from iceboot to configboot succeeds"
+    """
+    Make sure transition from iceboot to configboot succeeds
+    """
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_CONFIGBOOT)
@@ -235,7 +237,9 @@ class IcebootToConfigboot(DOMTest):
                 self.debugMsgs.append(txt)
 
 class CheckConfigboot(DOMTest):
-    "Check that I'm really in configboot when I think I am"
+    """
+    Check that I'm really in configboot when I think I am
+    """
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_CONFIGBOOT, end=DOMTest.STATE_CONFIGBOOT)
@@ -246,7 +250,9 @@ class CheckConfigboot(DOMTest):
             self.debugMsgs.append(txt)
 
 class IcebootToEcho(DOMTest):
-    "Make sure transition from iceboot to echo-mode succeeds"
+    """
+    Make sure transition from iceboot to echo-mode succeeds
+    """
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ECHO)
@@ -257,7 +263,9 @@ class IcebootToEcho(DOMTest):
             self.debugMsgs.append(txt)
 
 class EchoTest(DOMTest):
-    "Perform echo test of 100 variable-length random packets, when DOM is in echo mode"
+    """
+    Perform echo test of 100 variable-length random packets, when DOM is in echo mode
+    """
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ECHO, end=DOMTest.STATE_ECHO)
@@ -273,7 +281,9 @@ class EchoTest(DOMTest):
                 return
 
 class EchoCommResetTest(DOMTest):
-    "Perform echo tests when DOM is in echo mode"
+    """
+    Perform echo tests when DOM is in echo mode, doing a comm reset between each
+    """
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ECHO, end=DOMTest.STATE_ECHO)
@@ -421,7 +431,9 @@ def getLastMoniMsgs(domapp):
 ################################### SPECIFIC TESTS ###############################
 
 class GetDomappRelease(QuickDOMAppTest):
-    "Make sure I can ask domapp for its release string"
+    """
+    Ask domapp for its release string
+    """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         try:
@@ -430,7 +442,9 @@ class GetDomappRelease(QuickDOMAppTest):
             self.fail(exc_string())
 
 class DOMIDTest(QuickDOMAppTest):
-    "Make sure I can get DOM ID from domapp"
+    """
+    Get DOM ID from domapp
+    """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         try:
@@ -438,8 +452,49 @@ class DOMIDTest(QuickDOMAppTest):
         except Exception, e:
             self.fail(exc_string())
 
+class ScalerDeadtimePulserTest(DOMAppTest):
+    """
+    Set fast moni interval, enable pulser and look for nonzero
+    scaler deadtime values
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        numZeroRecs = 0
+        try:
+            domapp.setMonitoringIntervals(0, 0, 0)
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
+            setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
+            domapp.setTriggerMode(2)
+            domapp.setPulser(mode=FE_PULSER, rate=100)
+            domapp.setCompressionMode(0)            
+            domapp.startRun()
+            domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
+        except Exception, e:
+            self.fail(exc_string())
+            self.appendMoni(domapp)
+            return
 
-class FastMoniTest(DOMAppHVTest):
+        t = MiniTimer(self.runLength*1000)
+        while not t.expired():
+            mlist = getLastMoniMsgs(domapp)
+            for m in mlist:
+                s1 = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
+                if s1:
+                    deadtime = int(s1.group(4))
+                    if(deadtime <= 0):
+                        numZeroRecs += 1
+                        if numZeroRecs > 1:
+                            self.fail("Too many bad scaler deadtime values! (%d)" % numZeroRecs)
+                self.debugMsgs.append(m)
+        try:
+            domapp.endRun()
+        except Exception, e:
+            self.appendMoni(domapp)
+                                              
+                      
+class FastMoniTestHV(DOMAppHVTest):
     """
     Set fast monitoring interval and make sure rate of generated records
     is roughly correct; check that SPE and MPE scalers match those in
@@ -447,6 +502,7 @@ class FastMoniTest(DOMAppHVTest):
     """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        numZeroRecs         = 0
         NOMINAL_HV_VOLTS    = 900 # Is this the best value?
         fastInterval        = 2 # Number of seconds delay between records
         tolerance           = 4 # Want to be within this many records of expected
@@ -456,6 +512,7 @@ class FastMoniTest(DOMAppHVTest):
         hitsMonitored       = 0
         hitsReadOut         = 0
         try:
+            domapp.setMonitoringIntervals(0, 0, 0)
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
             domapp.setTriggerMode(2)
@@ -465,14 +522,12 @@ class FastMoniTest(DOMAppHVTest):
             domapp.selectMUX(255)
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)            
-            domapp.setMonitoringIntervals(hwInt=fastInterval, fastInt=fastInterval)
             domapp.startRun()
+            domapp.setMonitoringIntervals(hwInt=fastInterval, fastInt=fastInterval)
         except Exception, e:
             self.fail(exc_string())
             self.appendMoni(domapp)
             return
-
-        t = MiniTimer(self.runLength*1000)
 
         def countDeltaHits(): # Mini functionlette to count compressed hits
             ret = 0
@@ -483,6 +538,7 @@ class FastMoniTest(DOMAppHVTest):
                     ret += 1
             return ret
         
+        t = MiniTimer(self.runLength*1000)
         while not t.expired():
             # Get hit data, to cause hit counters to fill
             try:
@@ -511,6 +567,11 @@ class FastMoniTest(DOMAppHVTest):
                     fMPE  = s1.group(2)
                     hitsMonitored += int(s1.group(3))
                     fHits = int(s1.group(3))
+                    deadtime = int(s1.group(4))
+                    if deadtime <= 0:
+                        numZeroRecs += 1
+                        if numZeroRecs > 1:
+                            self.fail("Too many bad scaler deadtime values! (%d)" % numZeroRecs)
                 if s2:
                     gotHW = True
                     hwMoniRecordCount += 1
@@ -562,12 +623,12 @@ class FastMoniTest(DOMAppHVTest):
                             
         if hitsReadOut != hitsMonitored:
             self.fail("Total hits monitored (%d) doesn't equal total hits read out (%d)"
-                      % (hitsReadOut, hitsMonitored))
-
-        self.fail("Failing for no particular reason, just feeling a bit schleppedick")
+                      % (hitsMonitored, hitsReadOut))
 
 class SNDeltaSPEHitTest(DOMAppHVTest):
-    "Collect both SPE and SN data, make sure there are no gaps in SN data"
+    """
+    Collect both SPE and SN data, make sure there are no gaps in SN data
+    """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)        
         NOMINAL_HV_VOLTS = 900 # Is this the best value?
@@ -642,7 +703,9 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
             return
 
 class PedestalStabilityTest(DOMAppHVTest):
-    "Measure pedestal stability by taking an average over several tries"
+    """
+    Measure pedestal stability by taking an average over several tries
+    """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)        
         NOMINAL_HV_VOLTS   = 800 # Is this the best value?
@@ -829,7 +892,9 @@ class DeltaCompressionBeaconTest(DOMAppTest):
             self.fail("Didn't get any hit data!")
 
 class SNTest(DOMAppTest):
-    "Make sure no gaps are present in SN data"    
+    """
+    Make sure no gaps are present in SN data
+    """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         try:
@@ -1111,9 +1176,9 @@ def main():
     # Domapp tests have to be kept together for the
     # -o option to work correctly (FIXME)
     ListOfTests.extend([GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
-                        SNTest, PedestalMonitoringTest])
+                        SNTest, PedestalMonitoringTest, ScalerDeadtimePulserTest])
     if opt.doHVTests:
-        ListOfTests.extend([FastMoniTest, PedestalStabilityTest, SNDeltaSPEHitTest])
+        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, SNDeltaSPEHitTest])
 
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,
