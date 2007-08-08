@@ -1,7 +1,16 @@
 Issues:
 
-0001683: domapptest.py - Add pedestal monitoring test
+0001693: domapptest.py - Add scaler deadtime test
+0001690/1683: domapptest.py - Add test to verify that pedestal pattern data are monitored
+0001686: domapptest.py - Allow user to select ONLY domapp-related tests
+0001684: domapptest.py - Add ability to upload and test new domapp on the fly
+0001676: domapptest.py - Adopt fast moni test to verify that new hit counters 
+                         in fast moni records agree w/ actual hit counts
+0001675: domapptest.py - Check that HW and FAST moni records agree (MPE/SPEs)
+0001673: domapptest.py - Add timestamps to output
+0001672: domapptest.py - test frequency of new 'fast' monitoring records
 0001648: Make tool to report GPS status of all DOR cards in parallel
+0001647: DOMPrep.py fails on RHEL4 hub when built on PCTS; fails on PCTS when built on spts64-build64
 0001623: Add test which interleaves echo messages and comms resets
 0001511: DOMPrep.py - tolerate failures to open dev file
 ==============================================================
