@@ -336,6 +336,7 @@ class DOMApp:
           mode = 1: LC UP.or.DOWN
           mode = 2: LC UP only
           mode = 3: LC DOWN only
+          mode = 4: SLC-only (require but disable LC)
 
           transmit = 0: no LCtransmit
           transmit = 1: TX DOWN only
