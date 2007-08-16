@@ -13,6 +13,7 @@ from domapptools.exc_string import exc_string
 from domapptools.domapp import *
 from domapptools.MiniDor import *
 from domapptools.DeltaHit import *
+from domapptools.EngHit import *
 
 from os.path import exists
 from math import sqrt
@@ -56,7 +57,10 @@ class DOMTest:
         str = ""
         if self.debugMsgs:
             for m in self.debugMsgs:
-                if m != "": str += "%s\n" % m
+                if type(m) == type([]):
+                    for i in m:
+                        if i != "": str += "%s\n" % i
+                elif m != "": str += "%s\n" % m
         return str
 
     def clearDebugTxt(self): self.debugMsgs = []
@@ -361,6 +365,70 @@ class DOMAppHVTest(DOMAppTest):
         domapp.setHV(0)
         domapp.disableHV()
 
+class FlasherTest(DOMAppTest):
+    def __init__(self, card, wire, dom, dor, abSelect='A'):
+        DOMAppTest.__init__(self, card, wire, dom, dor)
+        self.abSelect = abSelect
+    def run(self, fd):
+        if self.dom != self.abSelect: return # Automatically pass
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            domapp.setMonitoringIntervals(0, 0, 0)
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.setTriggerMode(3)
+            domapp.setCompressionMode(0)
+#            domapp.setPulser(mode=BEACON, rate=1)
+            domapp.selectMUX(3)
+            domapp.startFBRun(1, 10, 0, 1, 100)
+            domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
+        except Exception, e:
+            self.fail(exc_string())
+            self.appendMoni(domapp)
+            return
+
+        t = MiniTimer(self.runLength*1000)
+        gotData = False
+        nhits = 0
+        while not t.expired():
+            try:
+                hitdata = domapp.getWaveformData()
+            except Exception, e:
+                self.fail(exc_string())
+                self.appendMoni(domapp)
+                break
+            
+            if len(hitdata) > 0:
+                gotData = True
+                hitBuf = EngHitBuf(hitdata)
+                for hit in hitBuf.next():
+                    nhits += 1
+                    trigType = hit.trigType
+                    print "Trigger type %d" % trigType
+        try:
+            domapp.endRun()
+        except Exception, e:
+            self.fail(exc_string())
+            self.appendMoni(domapp)
+
+        if not gotData: self.fail("Did not get any hit data from DOM!")
+        if nhits < 1:
+            self.fail("Didn't get any hits!")
+
+class FlasherATest(FlasherTest):
+    """
+    Test flashers on A DOMs
+    """
+    def __init__(self, card, wire, dom, dor):
+        FlasherTest.__init__(self, card, wire, dom, dor, 'A')
+
+class FlasherBTest(FlasherTest):
+    """
+    Test flashers on B DOMs
+    """
+    def __init__(self, card, wire, dom, dor):
+        FlasherTest.__init__(self, card, wire, dom, dor, 'B')
+
 ####################### HELPER METHODS (move into domapp base classes?) ####################
 
 def setDAC(domapp, dac, val): domapp.writeDAC(dac, val)
@@ -491,6 +559,7 @@ class ScalerDeadtimePulserTest(DOMAppTest):
         try:
             domapp.endRun()
         except Exception, e:
+            self.fail(exc_string())
             self.appendMoni(domapp)
                                               
                       
@@ -625,6 +694,80 @@ class FastMoniTestHV(DOMAppHVTest):
             self.fail("Total hits monitored (%d) doesn't equal total hits read out (%d)"
                       % (hitsMonitored, hitsReadOut))
 
+class SLCOnlyTest(DOMAppTest):
+    """
+    Parent class for SLCOnlyPulserTest and SLCOnlyHVTest, which does the test
+    either with pulser or with HV on/SPEs
+    """
+    def run(self, fd, doHV=False):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        NOMINAL_HV_VOLTS = 900 # Is this the best value?
+        try:
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.setTriggerMode(2)
+            domapp.selectMUX(255)
+            if doHV:
+                self.setHV(domapp, NOMINAL_HV_VOLTS)
+                domapp.setPulser(mode=BEACON, rate=4)
+            else:
+                domapp.setPulser(mode=FE_PULSER, rate=10)
+            domapp.setDataFormat(2)
+            domapp.setCompressionMode(2)            
+            domapp.setLC(mode=4, type=1, source=0, span=1)
+            domapp.startRun()
+            domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
+
+            nhits = 0
+            t = MiniTimer(self.runLength*1000)
+            broken = False
+            while not broken and not t.expired():
+                self.appendMoni(domapp)
+                hitdata = domapp.getWaveformData()
+                if len(hitdata) > 0:
+                    hitBuf = DeltaHitBuf(hitdata) # Does basic integrity check
+                    for hit in hitBuf.next():
+                        if not hit.is_spe: continue # Skip beacon-only hits
+                        nhits += 1
+                        if (not hit.is_beacon) and hit.hitsize > 12:
+                            self.fail("After %d hits, SLC-only hit buffer contains waveforms (%d bytes)!"
+                                      % (nhits, hit.hitsize))
+                            self.debugMsgs.append(str(hit))
+                            broken = True
+                            break
+
+            domapp.endRun()
+            if doHV: self.turnOffHV(domapp)
+
+            if nhits < 1:
+                self.fail("No hits found!")
+                
+        except Exception, e:
+            self.fail(exc_string())
+            try:
+                if doHV: self.turnOffHV(domapp)
+                domapp.endRun()
+            except:
+                pass
+            self.appendMoni(domapp)
+            return
+        
+class SLCOnlyPulserTest(DOMAppTest, SLCOnlyTest):
+    """
+    Test 'SLC-Only' mode where SLC is required and LC is "off" (compression
+    on.  Requirement is to get some non-beacon hits but NO waveforms - just
+    delta-compression headers.  This test runs with front end pulser (no HV).
+    """
+    def run(self, fd): SLCOnlyTest.run(self, fd)
+            
+class SLCOnlyHVTest(DOMAppHVTest, SLCOnlyTest):
+    """
+    Test 'SLC-Only' mode where SLC is required and LC is "off" (compression
+    on.  Requirement is to get some non-beacon hits but NO waveforms - just
+    delta-compression headers.  This test runs with real SPEs with HV on.
+    """
+    def run(self, fd): SLCOnlyTest.run(self, fd, doHV=True)
+    
 class SNDeltaSPEHitTest(DOMAppHVTest):
     """
     Collect both SPE and SN data, make sure there are no gaps in SN data
@@ -1128,6 +1271,10 @@ def main():
                  action="store_true",
                  dest="doHVTests",    help="Perform HV tests")
 
+    p.add_option("-F", "--flasher-tests",
+                 action="store_true",
+                 dest="doFlasherTests", help="Perform flasher tests")
+    
     p.add_option("-l", "--list-tests",
                  action="store_true",
                  dest="listTests",    help="List tests to be performed")
@@ -1156,6 +1303,7 @@ def main():
     
     p.set_defaults(stopFail         = False,
                    doHVTests        = False,
+                   doFlasherTests   = False,
                    setDuration      = None,
                    repeatCount      = None,
                    doOnly           = False,
@@ -1176,10 +1324,13 @@ def main():
     # Domapp tests have to be kept together for the
     # -o option to work correctly (FIXME)
     ListOfTests.extend([GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
-                        SNTest, PedestalMonitoringTest, ScalerDeadtimePulserTest])
+                        SNTest, PedestalMonitoringTest, ScalerDeadtimePulserTest, SLCOnlyPulserTest])
     if opt.doHVTests:
-        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, SNDeltaSPEHitTest])
+        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, SNDeltaSPEHitTest, SLCOnlyHVTest])
 
+    if opt.doFlasherTests:
+        ListOfTests.extend([FlasherATest, FlasherBTest])
+        
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,
                         EchoTest,

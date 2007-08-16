@@ -264,6 +264,11 @@ class DOMApp:
     def startRun(self):
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_BEGIN_RUN)
 
+    def startFBRun(self, bright, win, delay, mask, rate):
+        self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_BEGIN_FB_RUN,
+                     data=pack(">HHhHH", bright, win, delay, mask, rate)
+                     )
+
     def endRun(self):
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_END_RUN)
 
@@ -337,9 +342,9 @@ class DOMApp:
           transmit = 2: TX UP only
           transmit = 3: TX UP.and.DOWN (DEFAULT)
          
-          type = 0: soft LC
-          type = 1: hard LC (DEFAULT)
-          type = 2: flabby LC
+          type = 1: soft LC
+          type = 2: hard LC (DEFAULT)
+          type = 3: flabby LC
 
           source = 0: SPE triggers (DEFAULT)
           source = 1: MPE triggers

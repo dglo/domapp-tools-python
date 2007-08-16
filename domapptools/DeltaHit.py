@@ -17,11 +17,13 @@ class DeltaHit:
         if not iscompressed:
             raise MalformedDeltaCompressedHitBuffer("no compression bit found")
         self.hitsize = self.words[0] & 0x7FF
-        self.natwdch = (self.words[0] & 0x3000) >> 12
+        self.natwdch = ((self.words[0] & 0x3000) >> 12)+1
         self.trigger = (self.words[0] & 0x7ffe0000) >> 18
         self.atwd_avail = ((self.words[0] & 0x4000) != 0)
         self.atwd_chip  = (self.words[0] & 0x0800) >> 11
         self.fadc_avail = ((self.words[0] & 0x8000) != 0)
+        self.lcdown     = (( self.words[0] >> 16) & 0x1 == 1)
+        self.lcup       = (( self.words[0] >> 17) & 0x1 == 1)
         if self.trigger & 0x01: self.is_spe    = True
         else:                   self.is_spe    = False
         if self.trigger & 0x02: self.is_mpe    = True
@@ -30,11 +32,13 @@ class DeltaHit:
         else:                   self.is_beacon = False
 
     def __repr__(self):
+        lcup = self.lcup and "LCUP" or ""
+        lcdn = self.lcdown and "LCDN" or ""
         return """
-W0 0x%08x W1 0x%08x
+W0 0x%08x W1 0x%08x %s %s
 Hit size = %4d     ATWD avail   = %4d     FADC avail = %4d
 A/B      = %4d     ATWD#        = %4d     Trigger word = 0x%04x
-"""                         % (self.words[0], self.words[1], self.hitsize,
+"""                         % (self.words[0], self.words[1], lcup, lcdn, self.hitsize,
                                self.atwd_avail, self.fadc_avail,
                                self.atwd_chip, self.natwdch, self.trigger)
 
