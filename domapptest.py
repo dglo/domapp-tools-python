@@ -562,7 +562,45 @@ class ScalerDeadtimePulserTest(DOMAppTest):
             self.fail(exc_string())
             self.appendMoni(domapp)
                                               
-                      
+class MessageSizePulserTest(DOMAppTest):
+    """
+    Run pulser at a high rate and make sure you have messages > 3000 bytes
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        maxMsgSize = 0
+        try:
+            domapp.setMonitoringIntervals(0, 0, 0)
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
+            setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
+            domapp.setTriggerMode(2)
+            domapp.setPulser(mode=FE_PULSER, rate=1000)
+            domapp.setDataFormat(2)
+            domapp.setCompressionMode(2)
+            domapp.startRun()
+            domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
+
+            t = MiniTimer(self.runLength*1000)
+            while not t.expired():
+                self.appendMoni(domapp)
+                hitdata = domapp.getWaveformData()
+                if len(hitdata) > maxMsgSize:
+                    maxMsgSize = len(hitdata)
+                    self.debugMsgs.append("Got new max (%d byte) data payload" % maxMsgSize)
+            
+        except Exception, e:
+            self.fail(exc_string())
+            try:
+                domapp.endRun()
+            except:
+                pass
+            self.appendMoni(domapp)
+
+        if maxMsgSize < 3000: self.fail("Maximum message size (%d bytes) too small!"
+                                         % maxMsgSize)
+        
 class FastMoniTestHV(DOMAppHVTest):
     """
     Set fast monitoring interval and make sure rate of generated records
@@ -1324,7 +1362,8 @@ def main():
     # Domapp tests have to be kept together for the
     # -o option to work correctly (FIXME)
     ListOfTests.extend([GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
-                        SNTest, PedestalMonitoringTest, ScalerDeadtimePulserTest, SLCOnlyPulserTest])
+                        SNTest, PedestalMonitoringTest, ScalerDeadtimePulserTest,
+                        SLCOnlyPulserTest, MessageSizePulserTest])
     if opt.doHVTests:
         ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, SNDeltaSPEHitTest, SLCOnlyHVTest])
 
