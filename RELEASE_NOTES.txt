@@ -4,6 +4,7 @@ Several improvements, some major, with the addition of several new tests
 and options.
 
 Issues:
+0001718: Support multiple python distributions
 0001717: Swap LC modes 4 and 5 
 0001715: domapptest.py fails to reset status when test restarts
 0001716: domapptest.py - MessageSizePulserTest fails on repeat
