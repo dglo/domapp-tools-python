@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import errno
+
 import os, time
 from sys import stderr
 from struct import pack, unpack
@@ -15,7 +15,6 @@ TEST_MANAGER        = 5
 
 # MESSAGE_HANDLER facility subtypes
 MSGHAND_GET_DOM_ID              = 10
-MSGHAND_GET_MSG_STATS           = 14
 MSGHAND_ECHO_MSG                = 18
 MSGHAND_ACCESS_MEMORY_CONTENTS  = 20
 MSGHAND_GET_DOMAPP_RELEASE      = 24
@@ -51,19 +50,6 @@ DSC_SET_LC_CABLE_LEN            = 57
 DSC_GET_LC_CABLE_LEN            = 58
 DSC_ENABLE_SN                   = 59
 DSC_DISABLE_SN                  = 60
-DSC_SET_CHARGE_STAMP_TYPE       = 61
-DSC_SELECT_MINBIAS              = 62
-DSC_SET_SELF_LC_MODE            = 63
-DSC_GET_SELF_LC_MODE            = 64
-DSC_SET_SELF_LC_WINDOW          = 65
-DSC_GET_SELF_LC_WINDOW          = 66
-DSC_SET_ALT_TRIG_MODE           = 67
-DSC_GET_ALT_TRIG_MODE           = 68
-DSC_SET_DAQ_MODE                = 69
-DSC_GET_DAQ_MODE                = 70
-DSC_SET_MB_LED_ON               = 71
-DSC_SET_MB_LED_OFF              = 72
-DSC_MB_LED_RUNNING              = 73
 
 # DATA_ACCESS message
 DATA_ACC_GET_DATA               = 11
@@ -81,14 +67,6 @@ DATA_ACC_GET_COMP_MODE          = 27
 DATA_ACC_GET_SN_DATA            = 28
 DATA_ACC_RESET_MONI_BUF         = 29
 DATA_ACC_MONI_AVAIL             = 30
-DATA_ACC_SET_LBM_BIT_DEPTH      = 32
-DATA_ACC_GET_LBM_SIZE           = 33
-DATA_ACC_HISTO_CHARGE_STAMPS    = 34
-DATA_ACC_SELECT_ATWD            = 35
-DATA_ACC_GET_F_MONI_RATE_TYPE   = 36
-DATA_ACC_SET_F_MONI_RATE_TYPE   = 37
-DATA_ACC_GET_LBM_PTRS           = 38
-DATA_ACC_GET_INTERVAL           = 39
 
 # EXPERIMENT_CONTROL messages subtypes
 EXPCONTROL_BEGIN_RUN                = 12
@@ -98,8 +76,6 @@ EXPCONTROL_GET_NUM_PEDESTALS        = 19
 EXPCONTROL_GET_PEDESTAL_AVERAGES    = 20
 EXPCONTROL_BEGIN_FB_RUN             = 27
 EXPCONTROL_END_FB_RUN               = 28
-EXPCONTROL_CHANGE_FB_SETTINGS       = 29
-EXPCONTROL_RUN_UNIT_TESTS           = 30
 
 # HAL DACs and ADCs
 DAC_ATWD0_TRIGGER_BIAS          = 0
@@ -122,50 +98,15 @@ DAC_MUX_BIAS                    = 15
 # Pulser modes
 FE_PULSER  = 1
 BEACON     = 2
-MB_LED     = 3
 
-# Trigger modes
-TEST_PATTERN_TRIG_MODE  = 0
-CPU_TRIG_MODE           = 1
-SPE_DISC_TRIG_MODE      = 2
-FB_TRIG_MODE            = 3
-MPE_DISC_TRIG_MODE      = 4
-FE_PULSER_TRIG_MODE     = 5
-MB_LED_TRIG_MODE        = 6
-LC_UP_TRIG_MODE         = 7
-LC_DOWN_TRIG_MODE       = 8
-
-# DAQ modes
-DAQ_MODE_ATWD_FADC = 0
-DAQ_MODE_FADC      = 1
-DAQ_MODE_TS        = 2
-
-# Self-LC modes
-SELF_LC_MODE_NONE = 0
-SELF_LC_MODE_SPE  = 1
-SELF_LC_MODE_MPE  = 2
 
 DRIVER_ROOT = "/proc/driver/domhub"
 
 _atwdMask = { 1 : { 0 : 0, 16 : 9, 32 : 1, 64 : 5, 128 : 13 },
               2 : { 0 : 0, 16 : 11, 32 : 3, 64 : 7, 128 : 15 } }
-
-class IntervalTimedOut(Exception):
-    def __init__(self, data_count, moni_count, sn_count):
-        self.data_count = data_count
-        self.moni_count = moni_count
-        self.sn_count = sn_count
-
-    def __str__(self):
-        return "Interval timed out data %d/ moni %d/ supernova %d" % (data_count, moni_count, sn_count)
-
-class InsufficientMessageDataPortion(Exception):
-    def __init__(self, buf, expected):
-        self.buf = buf; self.buf = buf; self.expected = expected
-    def __str__(self):
-        return "(return buffer was only %d bytes; expected %d bytes)" % (len(self.buf), self.expected)
-        
+   
 class MessagingException(Exception):
+
     def __init__(self, msg):
         self.msg = msg
 
@@ -174,42 +115,24 @@ class MessagingException(Exception):
             return "(Message %d bytes < 8 bytes)" % len(self.msg)
         return "(MT=%d,MST=%d,LEN=%d,0x%04x,ID=0x%02x,STATUS=0x%02x)" % unpack('>BBHHBB', self.msg)
 
-
-class MalformedMessageStatsException(Exception):
-    pass
-
-
-class GetIntervalException(Exception):
-    def __init__(self, data_count, moni_count, sn_count):
-        self.data_count = data_count
-        self.moni_count = moni_count
-        self.sn_count = sn_count
-
-    def __str__(self):
-        return "GetIntervalException (data: %d, moni: %d, sn: %d)" % \
-            (self.data_count,
-             self.moni_count,
-             self.sn_count)
-
-
-class DOMApp:   
+class DOMApp:
+   
     def __init__(self, card, pair, dom, fd):
         # File descriptor now passed into constructor - may be used outside of
         # DOMApp's methods...
-        self.card = card
-        self.pair = pair
-        self.dom = dom
+        self.card    = card
+        self.pair    = pair
+        self.dom     = dom
         self.blksize = int(file(os.path.join(DRIVER_ROOT, "bufsiz")).read(100))
-        self.fd = fd
-        self.snrequested = False
-
+        self.fd      = fd
+        
     def __del__(self):
         pass
 
     def sendMsg(self, type, subtype, data="", msgid=0, status=0, timeout=5000):
         ndat = len(data)
         msg  = pack(">BBHHBB", type, subtype, ndat, 0, msgid, status) + data
-        
+        EAGAIN = 11
         # FIXME: handle partial writes better
         t = MiniTimer(timeout)
         nw = 0
@@ -217,7 +140,7 @@ class DOMApp:
             try:
                 nw = os.write(self.fd, msg)
             except OSError, e:
-                if e.errno == errno.EAGAIN:
+                if e.errno == EAGAIN:
                     time.sleep(0.001) # Nothing available
                     continue
                 else: raise
@@ -233,7 +156,7 @@ class DOMApp:
             try:
                 buf  += os.read(self.fd, self.blksize)
             except OSError, e:
-                if e.errno == errno.EAGAIN: time.sleep(0.001) # Nothing available
+                if e.errno == EAGAIN: time.sleep(0.001) # Nothing available
                 else: raise
             except Exception: raise
 
@@ -251,87 +174,6 @@ class DOMApp:
             # print >>stderr, "Message Error: %s" % MessagingException(buf[0:8])
             raise MessagingException(buf[0:8])
         return buf[8:]
-
-
-    def recvMsgFull(self, status=0, timeout=5000):
-        """Receives a FULL message from the dom
-        The origional sendMsg code stripped off the header information before
-        returning it to the user.  We need that information to demultiplex the 
-        response from GET_INTERVAL.
-        So return the ENTIRE message
-        """
-        t = MiniTimer(timeout)
-        buf = ""
-        while not t.expired():
-            try:
-                buf  += os.read(self.fd, self.blksize)
-            except OSError, e:
-                if e.errno == errno.EAGAIN: time.sleep(0.001) # Nothing available
-                else: raise
-            except Exception: raise
-
-            if len(buf) >= 8:
-                msglen, = unpack('>H', buf[2:4])
-                # FIXME - worry about second message in next portion of write
-                if len(buf) >= msglen+8: break
-                    
-        if len(buf) < 8:
-            raise MessagingException(buf[0:len(buf)])
-        
-        status, = unpack("B", buf[7])
-        
-        if status != 0x01:
-            # print >>stderr, "Message Error: %s" % MessagingException(buf[0:8])
-            raise MessagingException(buf[0:8])
-        return buf
-
-
-    def getInterval(self):
-        # currently we are expecting a success
-        # message back from the dom before the streaming starts
-        
-        self.sendMsg(DATA_ACCESS, DATA_ACC_GET_INTERVAL)
-                
-        data_count = 0
-        moni_count = 0
-        sn_count = 0
-        duration = 0
-        start = time.time()
-
-        done = False
-        while not done and ((time.time() - start) < 30):
-            try:
-                next_msg = self.recvMsgFull()
-            except Exception, e:
-                raise GetIntervalException(data_count, moni_count, sn_count)
-            
-            # unpack the format field from that message
-            mesg_type, mesg_subtype = unpack(">BB", next_msg[0:2])
-
-            if mesg_type==3 and mesg_subtype==11:
-                # data packet
-                data_count = data_count + 1
-            elif mesg_type==3 and mesg_subtype==12:
-                moni_count = moni_count + 1
-                done = not self.snrequested
-            elif mesg_type==3 and mesg_subtype==28:
-                sn_count = sn_count + 1
-                done = True
-            else:
-                raise MessagingException(next_msg[0:8])
-
-        if not done:
-            # the interval did not complete in 30 seconds
-            raise IntervalTimedOut(data_count, moni_count, sn_count)
-
-        return {"data_count": data_count,
-                "moni_count": moni_count,
-                "sn_count": sn_count,
-                "duration": time.time() - start,
-                "card": self.card,
-                "pair": self.pair,
-                "dom": self.dom}
-        
 
     def getMainboardID(self):
         return self.sendMsg(MESSAGE_HANDLER, MSGHAND_GET_DOM_ID)
@@ -358,25 +200,13 @@ class DOMApp:
         """
         Get the DOM HV setting as a tuple (x,y,z)
         """
-        buf = self.sendMsg(DOM_SLOW_CONTROL, DSC_QUERY_PMT_HV)
-        if len(buf) < 4:
-            raise InsufficientMessageDataPortion(buf, 4)
-        return unpack(">2H", buf)
+        return unpack(">2H", self.sendMsg(DOM_SLOW_CONTROL, DSC_QUERY_PMT_HV))
 
-    def getMessageStats(self):
-        """
-        Get number of messages and idle loops from domapp
-        """
-        buf = self.sendMsg(MESSAGE_HANDLER, MSGHAND_GET_MSG_STATS)
-        if len(buf) != 8: raise MalformedMessageStatsException()
-        return unpack(">2L", buf)
-    
     def setDataFormat(self, fmt):
         """
         Set data format
         fmt = 0: engineering format
-        fmt = 1: regular format
-        fmt = 2: delta format
+        fmt = 1: default compression
         """
         self.sendMsg(DATA_ACCESS, DATA_ACC_SET_DATA_FORMAT, data=pack('b', fmt))
 
@@ -384,58 +214,20 @@ class DOMApp:
         """
         Set compression mode
         mode = 0: none (default)
-        mode = 1: regular compressed data
-        mode = 2: delta compressed data
+        mode = 1: compressed data (delta compression)
         """
         self.sendMsg(DATA_ACCESS, DATA_ACC_SET_COMP_MODE, data=pack('b', mode))
-
-    def selectAtwd(self, mode):
-        """
-        Select which ATWD(s) to use
-        mode = 0: ATWD A
-        mode = 1: ATWD B
-        mode = 2: both
-        """
-        self.sendMsg(DATA_ACCESS, DATA_ACC_SELECT_ATWD, data=pack('b', mode))
         
-
-    def setChargeStampHistograms(self, interval=0, prescale=1):
-        """
-        Set up charge stamp histogramming
-          interval = 0: disable
-          interval > 0 < 40,000,000: interval in seconds
-          interval >= 40,000,000: interval in clock ticks (up to 32 bits)
-          prescale: divisor for each bin in histogram
-        """
-        self.sendMsg(DATA_ACCESS, DATA_ACC_HISTO_CHARGE_STAMPS,
-                     data=pack('>LH', interval, prescale)
-                     )
-    
-    def setExtendedMode(domapp, enable):
-        """
-        Enable or disable extended functionality in domapp
-        """
-        # TEMP FIX ME this needs to do something
-        return
-
     def setTriggerMode(self, mode):
         """
         Set the DOM triggering mode
+          mode = 0: test pattern data
+          mode = 1: forced triggers
+          mode = 2: discriminator triggers (SPE)
+          mode = 3: flasher board triggers
         """
         self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_TRIG_MODE, data=pack('b', mode))
-
-    def setAltTriggerMode(self, mode):
-        """
-        Set an alternate (additional) DOM triggering mode (extended mode only)
-        """
-        self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_ALT_TRIG_MODE, data=pack('b', mode))
-
-    def setDAQMode(self, mode):
-        """
-        Set the DAQ mode (extended mode only)
-        """
-        self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_DAQ_MODE, data=pack('b', mode))
-
+       
     def enableSN(self, deadtime, mode):
         """
         Setup the supernova scalers.  Parameters are,
@@ -443,7 +235,6 @@ class DOMApp:
           - mode : 0 = SPE, 1 = MPE
         Note that this *must* be called prior to EXPCONTROL_BEGIN_RUN
         """
-        self.snrequested = True
         self.sendMsg(DOM_SLOW_CONTROL, DSC_ENABLE_SN,
                      data=pack(">ib", deadtime, mode)
                      )
@@ -451,58 +242,25 @@ class DOMApp:
     def setPulser(self, mode, rate=None):
         """
         Setup the onboard DOM pulser used for controlling heartbeats,
-        electronic pulses, and the mainboard LED pulse rate.  Can
-        call multiple times to enable both pulser and mainboard LED.
-        Only a single rate is supported by the DOM, so the most recent
-        rate setting will be used.
+        electronic pulses, and the flasherboard pulse rate.
         Arguments:
            mode = FE_PULSER : disables heartbeats and enables the
-                  analog FE pulser
-                = MB_LED : disables heartbeats and enables mainboard LED
-                = BEACON : disables FE pulser and MB LED and enables
+                  analog pulser,
+                = BEACON : disables analog pulser and enables
                   the heartbeat pulser
            rate = rate in Hz (roughly)
            """
         if mode == FE_PULSER:
             self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_PULSER_ON)
-        elif mode == MB_LED:
-            self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_MB_LED_ON)
         elif mode == BEACON:
             self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_PULSER_OFF)
-            self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_MB_LED_OFF)
         if rate is not None:
             self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_PULSER_RATE,
                          data=pack(">H", rate)
                          )
-            
     def disableSN(self):
-        self.snrequested = False
         self.sendMsg(DOM_SLOW_CONTROL, DSC_DISABLE_SN)
-        
-    def configureChargeStamp(self, type="fadc", channelSel=None):
-        if type == "fadc":
-            iType = 1
-        elif type == "atwd":
-            iType = 0
-        else:
-            raise Exception("Bad argument type '%s'" % type)
-        if channelSel == None:
-            iChannelMode = 0
-            iChannelByte = 2
-        else:
-            iChannelMode  = 1
-            iChannelByte = channelSel
-        
-        self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_CHARGE_STAMP_TYPE,
-                     data=pack(">BBB",
-                               iType, iChannelMode, iChannelByte)
-                     )
-
-    def enableMinbias(self):
-        self.sendMsg(DOM_SLOW_CONTROL, DSC_SELECT_MINBIAS, data=pack(">B", 1))
-    def disableMinbias(self):
-        self.sendMsg(DOM_SLOW_CONTROL, DSC_SELECT_MINBIAS, data=pack(">B", 0))
-        
+       
     def startRun(self):
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_BEGIN_RUN)
 
@@ -511,17 +269,9 @@ class DOMApp:
                      data=pack(">HHhHH", bright, win, delay, mask, rate)
                      )
 
-    def changeFBParams(self, bright, win, delay, mask, rate):
-        self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_CHANGE_FB_SETTINGS,
-                     data=pack(">HHhHH", bright, win, delay, mask, rate)
-                     )
-
     def endRun(self):
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_END_RUN)
 
-    def unitTests(self):
-        self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_RUN_UNIT_TESTS)
-        
     def getSupernovaData(self):
         return self.sendMsg(DATA_ACCESS, DATA_ACC_GET_SN_DATA)
    
@@ -567,18 +317,9 @@ class DOMApp:
                      data=pack(">3I", hwInt, cfInt, fastInt)
                      )
 
-    def collectPedestals(self, natwd0=100, natwd1=100, nfadc=100, set_bias=None):
-        if set_bias is None:
-            data = pack(">3I", natwd0, natwd1, nfadc)
-        else:
-            atwd0 = set_bias["atwd0"]
-            atwd1 = set_bias["atwd1"]
-            data = pack(">3I6H", natwd0, natwd1, nfadc,
-                        atwd0[0], atwd0[1], atwd0[2],
-                        atwd1[0], atwd1[1], atwd1[2])
-            
+    def collectPedestals(self, natwd0=100, natwd1=100, nfadc=100):
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_DO_PEDESTAL_COLLECTION,
-                     data=data
+                     data=pack(">3I", natwd0, natwd1, nfadc)
                      )
 
     def getPedestalAverages(self):
@@ -654,17 +395,7 @@ class DOMApp:
                                    lc_opts['cablelen'][6],
                                    lc_opts['cablelen'][7]
                                    ))
-
-    def setSelfLC(self, mode=SELF_LC_MODE_NONE, window=100):
-        """
-        Set up self local-coincidence, where the DOM can self-satisfy LC
-        on e.g. a large signal.
-          mode: none, SPE discriminatator, or MPE discriminator
-          window: length of LC acceptance window in ns
-        """
-        self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_SELF_LC_MODE, data=pack("B", mode))
-        self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_SELF_LC_WINDOW, data=pack(">i", window))        
-
+           
     def selectMUX(self, mux):
         """
         Select the multiplexer input channel
@@ -707,27 +438,3 @@ class DOMApp:
             data=pack(">bbhi", ib, rw, n, address)
             )
 
-
-    def get_f_moni_rate_type(self):
-        """
-        Get moni rate type, as reported in 'fast' moni ASCII 'F' records:
-        '0' = HLC
-        '1' = SLC
-        """
-        return self.sendMsg(DATA_ACCESS, DATA_ACC_GET_F_MONI_RATE_TYPE)
-
-    def set_f_moni_rate_type(self, type):
-        """
-        Set moni rate type (sett get_f_moni_rate_type)
-        """
-        self.sendMsg(DATA_ACCESS, DATA_ACC_SET_F_MONI_RATE_TYPE, data=pack('b', type))
-    
-    def set_lbm_buffer_depth(self, bits):
-        self.sendMsg(DATA_ACCESS, DATA_ACC_SET_LBM_BIT_DEPTH, data=pack('b', bits))
-
-    def get_lbm_buffer_depth(self):
-        return unpack(">L", self.sendMsg(DATA_ACCESS, DATA_ACC_GET_LBM_SIZE))[0]
-
-    def get_lbm_ptrs(self):
-        return unpack(">LL", self.sendMsg(DATA_ACCESS, DATA_ACC_GET_LBM_PTRS))
-        

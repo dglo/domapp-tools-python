@@ -16,7 +16,7 @@ def MonitorRecordFactory(buf, domid='????????????', timestamp=0L):
         return ASCIIMonitorRecord(domid, timestamp, buf, moniLen, moniType, domClock)
     else:
         return MonitorRecord(domid, timestamp, buf, moniLen, moniType, domClock)
-
+    
 class MonitorRecord:
     """
     Generic monitor record type - supports the common base information
@@ -33,15 +33,7 @@ class MonitorRecord:
     def getDOMClock(self):
         """Retrieve the DOM timestamp."""
         return self.domClock
-
-    def __str__(self):
-        return """
-    DOM Id .............................. %s
-    UT Timestamp ........................ %x
-    DOM Timestamp ....................... %x
-    Record Type ......................... %02X
-    """ % (self.domid, self.timestamp, self.domClock, self.moniType)
-    
+        
 class ASCIIMonitorRecord(MonitorRecord):
     """
     Implements the ASCII type logging monitor record.
@@ -54,19 +46,12 @@ class ASCIIMonitorRecord(MonitorRecord):
         """Retrieve the payload message from the DOM monitor record."""
         return self.text
 
-    def __str__(self):
-        return """
-    DOM Id .............................. %s
-    UT Timestamp ........................ %x
-    DOM Timestamp ....................... %x
-    Message ............................. %s
-    """ % (self.domid, self.timestamp, self.domClock, self.text)
-
 class ConfigMonitorRecord(MonitorRecord):
     def __init__(self, domid, timestamp, buf, moniLen, moniType, domClock):
         MonitorRecord.__init__(self, domid, timestamp, buf, moniLen, moniType, domClock)
 
     def __str__(self):
+        print len(self.buf)
         return """
     DOM Id .............................. %s
     UT Timestamp ........................ %x
@@ -200,55 +185,44 @@ class HardwareMonitorRecord(MonitorRecord):
             unpack('>Bx27hii', self.buf[10:])
             )
 
-class MonitorStreamType:
-    """
-    Enumeration of encoding types for monitoring streams, differing in the
-    header length and encoding.
-    """
-    (STRINGHUB, PAYLOAD, DIRECT) = (0, 1, 2)
-
-def readMoniStream(f, type=MonitorStreamType.STRINGHUB):
-    """
-    Read monitor stream from file f.  Header encoding is specified by the
-    type argument (stringhub .moni file, payload-wrapped 2ndbuild file,
-    or direct domhub output). The default is stringhub format.
-    """
+def readMoniStream(f):
+    
     xroot = { }
-
-    while True:
-        if type == MonitorStreamType.STRINGHUB:
-            hdrLen = 32
-            hdr = f.read(hdrLen)
-            if len(hdr) == 0:
-                break
-            (recl, recid, domid, timestamp) = unpack('>iiq8xq', hdr)
-
-        elif type == MonitorStreamType.PAYLOAD:
-            hdrLen = 24
-            hdr = f.read(hdrLen)
-            if len(hdr) == 0:
-                break
-            (recl, recid, timestamp, domid) = unpack('>iiqq', hdr)
-            
-        elif type == MonitorStreamType.DIRECT:
-            hdrLen = 16
-            hdr = f.read(hdrLen)
-            if len(hdr) != 16:
-                break
-            (recl, recid, domid) = unpack('>iiq', hdr)
-        else:
-            print "Error: unknown monitor stream type",type
-            break
-            
+    
+    while 1:
+        hdr = f.read(32)
+        if len(hdr) == 0: break
+        (recl, recid, domid, timestamp) = unpack('>iiq8xq', hdr)
         domid = "%12.12x" % (domid)
-        buf = f.read(recl - hdrLen)
-        if (len(buf) < (recl - hdrLen)) or (recl == hdrLen):
-            break
-
+        #print recl, recid, domid, timestamp
+        buf = f.read(recl - 32)
         moni = MonitorRecordFactory(buf, domid, timestamp)
-
         if domid not in xroot: 
             xroot[domid] = [ ]
-        xroot[domid].append(moni)        
-
+        xroot[domid].append(moni)
+        
     return xroot
+    
+def readMoniStreamDH(f):
+    """
+    Can digest direct DOMHub output
+    """
+    
+    xroot = { }
+    
+    while 1:
+        hdr = f.read(16)
+        if len(hdr) != 16: break
+        (recl, recid, domid) = unpack('>iiq', hdr)
+        domid = "%12.12x" % (domid)
+        #print recl, recid, domid, timestamp
+        buf = f.read(recl - 16)
+        if domid not in xroot: 
+            xroot[domid] = [ ]
+        while len(buf) > 0:
+            blen, = unpack('>h', buf[0:2])
+            moni = MonitorRecordFactory(buf[0:blen], domid, -1L)
+            buf  = buf[blen:]
+            xroot[domid].append(moni)
+        
+    return xroot    

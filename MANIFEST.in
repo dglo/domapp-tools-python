@@ -3,6 +3,5 @@ include README.txt
 include setup.py
 include DOMPrep.py
 include domapptest.py
-include UploadDOMs.py
 include domapp-tools-python-version
 recursive-include domapptools *

@@ -4,8 +4,6 @@
 DOR Driver interface class
 
 $Id: dor.py,v 1.20 2006/01/02 20:16:35 kael Exp $
-
-Most of this is from Kael.  JJ 2011
 """
 
 import os, sys
@@ -81,11 +79,13 @@ class Driver:
         self.root = root
         f = file(os.path.join(self.root, "revision"))
         revstr = f.read()
-        grp = re.search('^(\S+)', revstr)
+        grp = re.search('^(\S+).+?\$\Revision:\s*(\S+)\s*\$', revstr)
         if grp == None:
             self.version = None
+            self.release = None
         else:
-            self.version = grp.group(1)
+            self.release = grp.group(1)
+            self.version = grp.group(2)
         self.scan()
 
     def __getitem__(self, key):
@@ -160,28 +160,28 @@ class Driver:
            
     def on(self, card, pair):
         """Turn on specified (card, pair)."""
-        f = file(os.path.join(self.path(card, pair), "pwr"), "w", buffering=0)       
+        f = file(os.path.join(self.path(card, pair), "pwr"), "w")       
         f.write("on\n")
         f.close()
         return self.scan()
        
     def onAll(self):
         """Turn all channels on."""
-        f = file(os.path.join(self.root, "pwrall"), "w", buffering=0)
+        f = file(os.path.join(self.root, "pwrall"), "w")
         f.write("on\n")
         f.close()
         return self.scan()
        
     def offAll(self):
         """Turns all channels off."""
-        f = file(os.path.join(self.root, "pwrall"), "w", buffering=0) 
+        f = file(os.path.join(self.root, "pwrall"), "w")
         f.write("off\n")
         f.close()
         return self.scan()
        
     def off(self, card, pair):
         """Turn off specified (card, pair)."""
-        f = file(os.path.join(self.path(card, pair), "pwr"), "w", buffering=0)
+        f = file(os.path.join(self.path(card, pair), "pwr"), "w")
         f.write("off\n")
         f.close()
         return self.scan()
@@ -191,7 +191,7 @@ class Driver:
         if len(self.doms == 0):
             self.discover_doms()
         card, pair, dom = self.doms[domId]
-        f = file(os.path.join(self.path(card, pair, dom), "softboot"), "w", buffering=0)
+        f = file(os.path.join(self.path(card, pair, dom), "softboot"))
         f.write("reset\n")
         f.close()
         return self.scan()
@@ -254,7 +254,7 @@ class Driver:
 
     def enable_blocking(self, state):
         """disable blocking on the domhub"""
-        f = file(os.path.join(self.root, 'blocking'), 'w', buffering=0)
+        f = file(os.path.join(self.root, 'blocking'), 'w')
         f.write(str(state) + "\n")
         f.close()
 
@@ -275,21 +275,13 @@ class Driver:
                             dev.close()
         self.scan()
 
-    def get_active_doms(self, exclude=None):
+    def get_active_doms(self):
         """list all active DOMs"""
         for c in self.cards:
             for p in c.pairs:
                 if p.plugged == 1 and p.powered == 1:
                     for d in ('A', 'B'):
                         domid = self.get_dom_id(c, p, d)
-                        name  = "%d%d%s" % (int(c), int(p), d)
-                        if exclude:
-                            excludeUpper = [x.upper() for x in exclude]
-                            try:
-                                i = excludeUpper.index(name)
-                                continue # If found - skip
-                            except ValueError:
-                                pass     # Not found - good to go
                         if domid is not None:
                             self.doms[domid] = (int(c), int(p), d)
         return self.doms
@@ -320,7 +312,7 @@ class Power:
     """
     def __init__(self, card, pair):
         """Constructor for a particular card and pair."""
-        self.ptop = "/proc/driver/domhub/card%d/pair%d" % (card, pair)
+        self.ptop = "%s/card%d/pair%d" % (_DRIVER_BASE, card, pair)
         self.fpwr = file(self.ptop + "/pwr", "w")
         self.card = card
         self.pair = pair
@@ -355,3 +347,14 @@ class Power:
         """Turn off power to a twisted pair."""
         self.fpwr.write("off\n")
         self.fpwr.flush()
+
+
+#Kael Hanson
+#University of Wisconsin - Madison
+#222 West Washington Ave
+#Suite 500
+#Madison, WI 53703
+#Tel: (608) 890-0540
+#kael.hanson@gmail.com
+
+

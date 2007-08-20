@@ -1,89 +1,3 @@
-
-TBD next release
-0008808: domapptools: add support for domapp extended mode slow control messages
-
-==============================================================
-
-V00-02-12 2017-08-16 John Kelley jkelley@icecube.wisc.edu
-0008218: decodemoni.py: Add flag to select a particular DOM
-
-==============================================================
-
-V00-02-11 2015-01-15 John Kelley jkelley@icecube.wisc.edu
-0007457: domapptest: test that we are sending minimal number of channels in delta-compressed waveforms
-0007207: Add decoding of configuration moni messages
-0007206: LBM overflow double-counting
-0005065: test interval query
-===============
-0005407: Implement rigorous test on setting of baseline average
-0005660: Online pedestal determination inaccurate after some DOM state changes
-0005987: Monitoring record decoder doesn't handle 2ndbuild format
-
-==============================================================
-
-V00-02-09 06-08-11 John Jacobsen john@mail.npxdesigns.com
-0004925 (dom-mb): Use (and test) Thorsten's new DOMApp FPGA (build 674)
-0004877 (dom-mb): Set average of pedestal pattern from surface
-0004922 (dom-mb): Change LBM default size
-0004138: Add tests for LBM overflow wrap bug
-0004064: Add simple unit tests to be run on request by surface
-0004063: set LBM buffer size message doesn't return a proper status
-0004045: Read FREV when iceboot self reset fails
-0004030: Print unprintable characters returned on failed excepts, for Iceboot reset and other tests
-0003844: Change 'F' monitoring records to report HLC instead of SLC
-0003618: Make test for Iceboot 'reload' command (corresponding to 'versions all')
-==============================================================
-
-V00-02-08 08-26-09 John Jacobsen john@mail.npxdesigns.com
-0003497 (DOM-MB): Setting SLC mode should fail if engineering format is set (improved test)
-==============================================================
-
-V00-02-07 08-26-09 John Jacobsen john@mail.npxdesigns.com
-0003497 (DOM-MB): Setting SLC mode should fail if engineering format is set.
-==============================================================
-
-V00-02-06 05-18-09 John Jacobsen john@mail.npxdesigns.com
-0003248 (DOM-MB): Make sure flasherboard gets disabled at end of run and allow surface to change FB settings mid-run (add test)
-0003253: flasher tests fail on PCTS
-==============================================================
-
-V00-02-05 08-01-08 John Jacobsen john@mail.npxdesigns.com
-0002799: FADCClockPollutionTest fails
-==============================================================
-
-V00-02-04 08-01-08 John Jacobsen john@mail.npxdesigns.com
-0002797: Add non-HV version of pedestal stability test
-0002798: Add 'Clock Pollution Test' for FADC
-0002793: Occasional MinimumBiasTest failures
-0002790: Occasional SLCOnlyHVTest failures
-0002789: Occasional SLCOnlyPulserTest failures
-0002788: Add option to repeat entire test cycle
-0002787: Add option to suppress reporting of successful tests
-==============================================================
-
-V00-02-03 07-18-08 John Jacobsen john@mail.npxdesigns.com
-0002572: Implement [test] icetop minbias hits
-0001529: Some DOMs have bad ATWD chips and we need to be able to configure pDAQ so that only one chip gets read out
-==============================================================
-
-V00-02-02 11-29-07 John Jacobsen john@mail.npxdesigns.com
-Issues:
-0002071: UploadDOMs.py - Retry softboot/open/get iceboot prompt sequence in case of 'dropped doms'
-0002070: UploadDOMs.py - Timeout for gunzip step is too short
-0002079: domapptest.py - Fix maxint warning under RHEL4
-0002081: domapptest.py - MessageSizePulserTest fails on pcts-hub02
-0002087: domapptest.py - Futurewarnings on pcts-hub02 (RHEL4)
-==============================================================
-
-V00-02-01 11-13-07 John Jacobsen john@mail.npxdesigns.com
-Issues:
-0001903: Make MB upload procedure bulletproof
-0001914: domapptest.py - IceTop charge stamps - exercise all 3 channels in 'auto' mode
-0001813: DOMApp - charge histogramming needed
-0001845: Wait for DOMAPP READY after starting domapp
-0001755: domapptest.py did not stop on Thorsten's test hub at LBNL
-==============================================================
-
 V00-02-00 8-20-07 John Jacobsen john@mail.npxdesigns.com
 
 Several improvements, some major, with the addition of several new tests
@@ -106,8 +20,6 @@ Issues:
 0001673: domapptest.py - Add timestamps to output
 0001672: domapptest.py - test frequency of new 'fast' monitoring records
 0001647: DOMPrep.py fails on RHEL4 hub when built on PCTS; fails on PCTS when built on spts64-build64
-0001755: domapptest.py did not stop on Thorsten's test hub at LBNL
-0001633: DOMPrep.py fails on RHEL4 domhub
 0001623: Add test which interleaves echo messages and comms resets
 0001511: DOMPrep.py - tolerate failures to open dev file
 ==============================================================
