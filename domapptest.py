@@ -756,7 +756,7 @@ class SLCOnlyTest(DOMAppTest):
                 domapp.setPulser(mode=FE_PULSER, rate=10)
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)            
-            domapp.setLC(mode=4, type=1, source=0, span=1)
+            domapp.setLC(mode=5, type=1, source=0, span=1)
             domapp.startRun()
             domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
 

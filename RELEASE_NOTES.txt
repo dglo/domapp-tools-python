@@ -1,5 +1,14 @@
-Issues:
+V00-02-00 8-20-07 John Jacobsen john@mail.npxdesigns.com
 
+Several improvements, some major, with the addition of several new tests
+and options.
+
+Issues:
+0001717: Swap LC modes 4 and 5 
+0001715: domapptest.py fails to reset status when test restarts
+0001716: domapptest.py - MessageSizePulserTest fails on repeat
+0001713: Test for issue 1711
+0001703: domapptest.py - Make test for SLC header-only hits
 0001693: domapptest.py - Add scaler deadtime test
 0001690/1683: domapptest.py - Add test to verify that pedestal pattern data are monitored
 0001686: domapptest.py - Allow user to select ONLY domapp-related tests
@@ -9,7 +18,6 @@ Issues:
 0001675: domapptest.py - Check that HW and FAST moni records agree (MPE/SPEs)
 0001673: domapptest.py - Add timestamps to output
 0001672: domapptest.py - test frequency of new 'fast' monitoring records
-0001648: Make tool to report GPS status of all DOR cards in parallel
 0001647: DOMPrep.py fails on RHEL4 hub when built on PCTS; fails on PCTS when built on spts64-build64
 0001623: Add test which interleaves echo messages and comms resets
 0001511: DOMPrep.py - tolerate failures to open dev file
