@@ -39,6 +39,9 @@ class DOMTest:
         self.endState   = end
 
         self.runLength  = runLength
+        self.reset()
+
+    def reset(self):
         self.debugMsgs  = []
         self.result     = "PASS"
         self.summary    = ""
@@ -576,7 +579,7 @@ class MessageSizePulserTest(DOMAppTest):
             setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
             setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
             domapp.setTriggerMode(2)
-            domapp.setPulser(mode=FE_PULSER, rate=1000)
+            domapp.setPulser(mode=FE_PULSER, rate=8000)
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)
             domapp.startRun()
@@ -589,13 +592,14 @@ class MessageSizePulserTest(DOMAppTest):
                 if len(hitdata) > maxMsgSize:
                     maxMsgSize = len(hitdata)
                     self.debugMsgs.append("Got new max (%d byte) data payload" % maxMsgSize)
-            
+
+            domapp.endRun()
         except Exception, e:
             self.fail(exc_string())
             try:
                 domapp.endRun()
             except:
-                pass
+                self.appendMoni(exc_string())
             self.appendMoni(domapp)
 
         if maxMsgSize < 3000: self.fail("Maximum message size (%d bytes) too small!"
@@ -1237,7 +1241,7 @@ class TestingSet:
         for test in self.cycle(testObjList, startState, self.doOnly, self.domappOnly, c, w, d):
             tstart = time.strftime("%d %b %Y %H:%M:%S", time.localtime())
             t0     = time.time()
-            
+            test.reset()
             test.run(dor.fd)
             dt     = "%2.2f" % (time.time()-t0)
             if(test.startState != test.endState): # If state change, flush buffers etc. to get clean IO
