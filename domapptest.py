@@ -379,11 +379,14 @@ class FlasherTest(DOMAppTest):
             domapp.setMonitoringIntervals(0, 0, 0)
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
+            setDAC(domapp, DAC_FLASHER_REF, 450)
+            domapp.collectPedestals(100, 100, 200)
+            
+            domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
             domapp.setTriggerMode(3)
             domapp.setCompressionMode(0)
-#            domapp.setPulser(mode=BEACON, rate=1)
             domapp.selectMUX(3)
-            domapp.startFBRun(1, 10, 0, 1, 100)
+            domapp.startFBRun(127, 50, 0, 1, 100)
             domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
         except Exception, e:
             self.fail(exc_string())
@@ -393,7 +396,8 @@ class FlasherTest(DOMAppTest):
         t = MiniTimer(self.runLength*1000)
         gotData = False
         nhits = 0
-        while not t.expired():
+        ok = True
+        while ok and not t.expired():
             try:
                 hitdata = domapp.getWaveformData()
             except Exception, e:
@@ -406,8 +410,41 @@ class FlasherTest(DOMAppTest):
                 hitBuf = EngHitBuf(hitdata)
                 for hit in hitBuf.next():
                     nhits += 1
-                    trigType = hit.trigType
-                    print "Trigger type %d" % trigType
+                    if hit.trigSource != 3:
+                        self.fail("Bad trigger type (%d) in flasher hit!"
+                                  % hit.trigSource)
+                        self.appendMoni(domapp)
+                        self.debugMsgs.append(hit)
+                        ok = False
+                        break
+                    if not hit.fbRunInProgress:
+                        self.fail("Hit indicates flasher run is not in progress!!!")
+                        self.appendMoni(domapp)
+                        self.debugMsgs.append(hit)
+                        ok = False
+                        break
+                    if len(hit.atwd[3]) != 128:
+                        self.fail("Insufficient channels (%d) in ATWD3"
+                                  % len(hit.atwd[3]))
+                        self.appendMoni(domapp)
+                        self.debugMsgs.append(hit)
+                        ok = False
+                        break
+                    min = None
+                    max = None
+                    for s in hit.atwd[3]:
+                        if min is None or s < min: min = s
+                        if max is None or s > max: max = s
+                    top = 800
+                    bot = 500
+                    if max < top or min > bot:
+                        self.fail("Current min(%d), max(%d): out of range (%d, %d)!"
+                                  % (min, max, bot, top))
+                        self.appendMoni(domapp)
+                        self.debugMsgs.append(hit)
+                        ok = False
+                        break
+                    
         try:
             domapp.endRun()
         except Exception, e:
