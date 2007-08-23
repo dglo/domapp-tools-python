@@ -381,10 +381,11 @@ class FlasherTest(DOMAppTest):
             setDefaultDACs(domapp)
             setDAC(domapp, DAC_FLASHER_REF, 450)
             domapp.collectPedestals(100, 100, 200)
-            
+            domapp.setPulser(mode=BEACON) # Turn pulser off
             domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
             domapp.setTriggerMode(3)
             domapp.setCompressionMode(0)
+            domapp.setDataFormat(0)
             domapp.selectMUX(3)
             domapp.startFBRun(127, 50, 0, 1, 100)
             domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
@@ -1351,9 +1352,10 @@ def main():
                  dest="doHVTests",    help="Perform HV tests")
 
     p.add_option("-F", "--flasher-tests",
-                 action="store_true",
-                 dest="doFlasherTests", help="Perform flasher tests")
-    
+                 action="store",      type="string",
+                 dest="doFlasherTests",
+                 help="Perform flasher tests, arg. is 'A' or 'B'")
+        
     p.add_option("-l", "--list-tests",
                  action="store_true",
                  dest="listTests",    help="List tests to be performed")
@@ -1382,7 +1384,7 @@ def main():
     
     p.set_defaults(stopFail         = False,
                    doHVTests        = False,
-                   doFlasherTests   = False,
+                   doFlasherTests   = None,
                    setDuration      = None,
                    repeatCount      = None,
                    doOnly           = False,
@@ -1400,16 +1402,26 @@ def main():
                    CheckIceboot,
                    SoftbootCycle,
                    IcebootToDomapp]
+
+
     # Domapp tests have to be kept together for the
     # -o option to work correctly (FIXME)
-    ListOfTests.extend([GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
-                        SNTest, PedestalMonitoringTest, ScalerDeadtimePulserTest,
+    ListOfTests.extend([GetDomappRelease, DOMIDTest, SNTest, DeltaCompressionBeaconTest,
+                        PedestalMonitoringTest, ScalerDeadtimePulserTest,
                         SLCOnlyPulserTest, MessageSizePulserTest])
-    if opt.doHVTests:
-        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, SNDeltaSPEHitTest, SLCOnlyHVTest])
 
-    if opt.doFlasherTests:
-        ListOfTests.extend([FlasherATest, FlasherBTest])
+    if opt.doFlasherTests == "A":
+        ListOfTests.extend([FlasherATest])
+    elif opt.doFlasherTests == "B":
+        ListOfTests.extend([FlasherBTest])
+    elif opt.doFlasherTests != None:
+        print "Flasher test arg must be 'A' or 'B'"
+        raise SystemExit
+
+    if opt.doHVTests:
+        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest,
+                            SNDeltaSPEHitTest, SLCOnlyHVTest])
+
         
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,
