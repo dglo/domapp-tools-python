@@ -15,6 +15,8 @@ class MiniTimer:
         self.start = hackTime()
         self.timeout = timeoutMsec
     def expired(self):
+        if hackTime() < self.start: return True # HACK: in rare cases (month boundary), 
+                                                # timer will expire early due to wrap.
         return (hackTime()-self.start >= self.timeout/1000)
 
 if __name__=="__main__":
