@@ -1,5 +1,8 @@
-Next:
+V00-02-01 ????????????????? John Jacobsen john@mail.npxdesigns.com
+Issues:
+0001845: Wait for DOMAPP READY after starting domapp
 0001755: domapptest.py did not stop on Thorsten's test hub at LBNL
+==============================================================
 
 V00-02-00 8-20-07 John Jacobsen john@mail.npxdesigns.com
 

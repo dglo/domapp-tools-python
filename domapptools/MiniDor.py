@@ -133,12 +133,9 @@ class MiniDor:
     def isInConfigboot2(self):      return self.se("\r\n", "#", 5000)
     def configbootToIceboot2(self): return self.se("r",    ">", 5000)
     def icebootToConfigboot2(self): return self.se("boot-serial reboot\r\n", "#", 5000)
+    def icebootToDomapp2(self):     return self.se("domapp\r\n", "DOMAPP READY", 5000)
     def icebootToEcho2(self):
         ok, txt = self.se("echo-mode\r\n", "echo-mode", 5000)
-        if ok: time.sleep(MiniDor.fpgaReloadSleepTime)
-        return (ok, txt)
-    def icebootToDomapp2(self):
-        ok, txt = self.se("domapp\r\n", "domapp", 5000)
         if ok: time.sleep(MiniDor.fpgaReloadSleepTime)
         return (ok, txt)
     def echoRandomPacket2(self, maxlen, timeout):
