@@ -354,6 +354,7 @@ class DOMAppTest(DOMTest):
 
 class DOMAppHVTest(DOMAppTest):
     "Subclass of DOMTest with an HV-setting method"
+    nominalHVVolts = 900 # Is this the best value?
     def setHV(self, domapp, hv):
         HV_TOLERANCE = 20   # HV must be correct to 10 Volts (20 units)
         domapp.enableHV()
@@ -642,6 +643,77 @@ class MessageSizePulserTest(DOMAppTest):
 
         if maxMsgSize < 3000: self.fail("Maximum message size (%d bytes) too small!"
                                          % maxMsgSize)
+
+class SPEScalerNotZeroTest(DOMAppHVTest):
+    """
+    Read out scalers and make sure, after the first readout, that
+    at least the SPE scaler values are nonzero
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            domapp.setMonitoringIntervals(0, 0, 0)
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.setTriggerMode(2)
+            domapp.selectMUX(255)
+            self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
+            domapp.setPulser(mode=BEACON, rate=4)
+            domapp.setDataFormat(2)
+            domapp.setCompressionMode(2)
+            domapp.setLC(mode=1, type=2, source=0, span=1)
+            domapp.startRun()            
+            domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
+            t = MiniTimer(self.runLength*1000)
+            fastVirgin  = True
+            HWVirgin    = True
+            gotMoniFast = False
+            gotMoniHW   = False
+            ok      = True
+            while ok and not t.expired():
+                mlist = getLastMoniMsgs(domapp)
+                for m in mlist:
+                    self.debugMsgs.append(m)
+                    s1 = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
+                    s2 = re.search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
+                    if s1:
+                        gotMoniFast = True
+                        if fastVirgin: fastVirgin = False # Skip first record which might be smaller or zero
+                        else:
+                            fSPE = int(s1.group(1))
+                            if fSPE < 1:
+                                self.fail("Insufficient 'fast' SPE scaler value (%d counts)" % fSPE)
+                                ok = False
+                                break
+                    if s2:
+                        gotMoniHW = True
+                        if HWVirgin: HWVirgin = False
+                        else:
+                            hwSPE = int(s2.group(1))
+                            if hwSPE < 1:
+                                self.fail("Insufficient 'HW' SPE scaler value (%d counts)" % hwSPE)
+                                ok = False
+                                break
+                            
+            if not gotMoniFast:
+                self.fail("Got no 'fast' monitoring records in run!")
+                self.appendMoni(domapp)
+            if not gotMoniHW:
+                self.fail("Got no 'HW' monitoring records in run!")
+                self.appendMoni(domapp)
+                
+            domapp.endRun()
+            self.turnOffHV(domapp)
+   
+        except Exception, e:
+            self.fail(exc_string())
+            try:
+                self.turnOffHV(domapp)
+                domapp.endRun()
+            except:
+                pass
+            self.appendMoni(domapp)
+            return
         
 class FastMoniTestHV(DOMAppHVTest):
     """
@@ -649,10 +721,11 @@ class FastMoniTestHV(DOMAppHVTest):
     is roughly correct; check that SPE and MPE scalers match those in
     so-called 'Hardware State Events'
     """
+    # FIXME: clean up (simplify) exception handling below - some cases not
+    #        caught correctly
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         numZeroRecs         = 0
-        NOMINAL_HV_VOLTS    = 900 # Is this the best value?
         fastInterval        = 2 # Number of seconds delay between records
         tolerance           = 4 # Want to be within this many records of expected
         fastMoniRecordCount = 0
@@ -666,7 +739,7 @@ class FastMoniTestHV(DOMAppHVTest):
             setDefaultDACs(domapp)
             domapp.setTriggerMode(2)
             domapp.setPulser(mode=BEACON, rate=4)
-            self.setHV(domapp, NOMINAL_HV_VOLTS)
+            self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
             domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 550)
             domapp.selectMUX(255)
             domapp.setDataFormat(2)
@@ -675,6 +748,10 @@ class FastMoniTestHV(DOMAppHVTest):
             domapp.setMonitoringIntervals(hwInt=fastInterval, fastInt=fastInterval)
         except Exception, e:
             self.fail(exc_string())
+            try:
+                self.turnOffHV(domapp)
+            except:
+                pass
             self.appendMoni(domapp)
             return
 
@@ -781,14 +858,13 @@ class SLCOnlyTest(DOMAppTest):
     """
     def run(self, fd, doHV=False):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
-        NOMINAL_HV_VOLTS = 900 # Is this the best value?
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
             domapp.setTriggerMode(2)
             domapp.selectMUX(255)
             if doHV:
-                self.setHV(domapp, NOMINAL_HV_VOLTS)
+                self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
                 domapp.setPulser(mode=BEACON, rate=4)
             else:
                 domapp.setPulser(mode=FE_PULSER, rate=10)
@@ -854,14 +930,13 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
     """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)        
-        NOMINAL_HV_VOLTS = 900 # Is this the best value?
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
             domapp.setTriggerMode(2)
             domapp.selectMUX(255)
             domapp.setMonitoringIntervals()
-            self.setHV(domapp, NOMINAL_HV_VOLTS)
+            self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
             domapp.setPulser(mode=BEACON, rate=4)
             domapp.enableSN(6400, 0)
             domapp.setMonitoringIntervals()
@@ -931,7 +1006,7 @@ class PedestalStabilityTest(DOMAppHVTest):
     """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)        
-        NOMINAL_HV_VOLTS   = 800 # Is this the best value?
+        PEDESTAL_HV_VOLTS   = 800 # Is this the best value?
         ATWD_PEDS_PER_LOOP = 100 
         FADC_PEDS_PER_LOOP = 200 
         MAX_ALLOWED_RMS    = 1.0
@@ -944,7 +1019,7 @@ class PedestalStabilityTest(DOMAppHVTest):
             domapp.setMonitoringIntervals()
 
             ### Turn on HV
-            self.setHV(domapp, NOMINAL_HV_VOLTS)
+            self.setHV(domapp, PEDESTAL_HV_VOLTS)
             
             ### Collect pedestals N times
 
@@ -1419,10 +1494,9 @@ def main():
         raise SystemExit
 
     if opt.doHVTests:
-        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest,
+        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, SPEScalerNotZeroTest,
                             SNDeltaSPEHitTest, SLCOnlyHVTest])
-
-        
+    # Post-domapp tests
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,
                         EchoTest,
