@@ -15,6 +15,7 @@ TEST_MANAGER        = 5
 
 # MESSAGE_HANDLER facility subtypes
 MSGHAND_GET_DOM_ID              = 10
+MSGHAND_GET_MSG_STATS           = 14
 MSGHAND_ECHO_MSG                = 18
 MSGHAND_ACCESS_MEMORY_CONTENTS  = 20
 MSGHAND_GET_DOMAPP_RELEASE      = 24
@@ -202,6 +203,12 @@ class DOMApp:
         """
         return unpack(">2H", self.sendMsg(DOM_SLOW_CONTROL, DSC_QUERY_PMT_HV))
 
+    def getMessageStats(self):
+        """
+        Get number of messages and idle loops from domapp
+        """
+        return unpack(">2L", self.sendMsg(MESSAGE_HANDLER, MSGHAND_GET_MSG_STATS))
+    
     def setDataFormat(self, fmt):
         """
         Set data format

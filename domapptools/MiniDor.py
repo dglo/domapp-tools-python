@@ -178,8 +178,8 @@ class MiniDor:
         ok, txt = self.se("\r\n", ">", 5000)
         if not ok: return (False, "%s\ndidn't get iceboot prompt!" % txt)
         # Exec the new domapp program
-        ok, txt = self.se("gunzip exec\r\n", "exec", 5000)
-        if not ok: return (False, "%s\ndidn't get exec!" % txt)
+        ok, txt = self.se("gunzip exec\r\n", "READY", 5000)
+        if not ok: return (False, "%s\ndidn't get READY!" % txt)
         return (True, "")
     
     def isInIceboot(self):         return self.isInIceboot2()[0]

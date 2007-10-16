@@ -562,6 +562,42 @@ class DOMIDTest(QuickDOMAppTest):
         except Exception, e:
             self.fail(exc_string())
 
+class IdleCounterTest(DOMAppTest):
+    """
+    Test idle counters in monitoring stream
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            domapp.setMonitoringIntervals(0, 0, 0)
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.selectMUX(255)
+            domapp.setDataFormat(2)
+            domapp.setCompressionMode(2)
+            domapp.setTriggerMode(2)
+            domapp.setPulser(mode=FE_PULSER, rate=200)
+            domapp.setLC(mode=0)
+            domapp.startRun()
+            domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
+            t = MiniTimer(self.runLength*1000)
+            while not t.expired():
+                # Get (and toss) hit data
+                hitdata = domapp.getWaveformData()
+                self.appendMoni(domapp)
+            domapp.endRun()
+            (msgs, loops) = domapp.getMessageStats()
+            if loops == 0:
+                self.fail("msgs=%d, loops=%d: bad values!" % (msgs, loops))
+            else:
+                self.summary = "%d messages, %d loops: %2.4f%% idle" % \
+                               (msgs, loops, 100.0-100.*(float(msgs)/float(loops)))
+        except Exception, e:
+            self.fail(exc_string())
+            self.appendMoni(domapp)            
+            try: domapp.endRun()
+            except: pass
+        
 class ScalerDeadtimePulserTest(DOMAppTest):
     """
     Set fast moni interval, enable pulser and look for nonzero
@@ -1482,7 +1518,7 @@ def main():
     # Domapp tests have to be kept together for the
     # -o option to work correctly (FIXME)
     ListOfTests.extend([GetDomappRelease, DOMIDTest, SNTest, DeltaCompressionBeaconTest,
-                        PedestalMonitoringTest, ScalerDeadtimePulserTest,
+                        PedestalMonitoringTest, ScalerDeadtimePulserTest, IdleCounterTest,
                         SLCOnlyPulserTest, MessageSizePulserTest])
 
     if opt.doFlasherTests == "A":
