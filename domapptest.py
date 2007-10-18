@@ -401,14 +401,17 @@ class ChargeStampHistoTest(DOMAppHVTest):
 
             domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
 
-            gotRec = False
+            gotRec = {}
             t = MiniTimer(self.runLength*1000)
             while not t.expired():
                 mlist = getLastMoniMsgs(domapp)
                 for m in mlist:
-                    s1 = re.search('ATWD CS', m)
+                    s1 = re.search('ATWD CS (\S+) (\d+)--(\d+) entries:', m)
                     if s1:
-                        gotRec = True
+                        chip    = s1.group(1)
+                        chan    = int(s1.group(2))
+                        entries = s1.group(3)
+                        gotRec[chip, chan] = True
                     self.debugMsgs.append(m)
 
             ### End condition: go back to FADC mode
@@ -416,10 +419,15 @@ class ChargeStampHistoTest(DOMAppHVTest):
             domapp.setChargeStampHistograms(0, 1)
 
             domapp.endRun()
-            
-            if not gotRec:
-                self.fail("No charge stamp histograms found!")
-                self.appendMoni(domapp)
+
+            ### Make sure I have records for each type
+            for chip in ['A','B']:
+                for chan in range(0,2):
+                    if not gotRec.has_key((chip, chan)) \
+                           or not gotRec[chip, chan]:
+                        self.fail("No charge stamp histograms found for chip %s, chan %d!" \
+                                  % (chip, chan))
+                        self.appendMoni(domapp)
                 
         except:
             try:
