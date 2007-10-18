@@ -22,6 +22,7 @@ import optparse
 
 class WriteTimeoutException(Exception):             pass
 class RepeatedTestChangesStateException(Exception): pass
+class UnsupportedTestException(Exception):          pass
 
 class DOMTest:
     STATE_ICEBOOT    = "ib"
@@ -78,7 +79,7 @@ class DOMTest:
 
     def fail(self, str):
         self.result = "FAIL"
-        self.debugMsgs.append(str)
+        self.summary = str
         
 class ConfigbootToIceboot(DOMTest):
     """
@@ -174,7 +175,6 @@ class SoftbootCycle(DOMTest):
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ICEBOOT)
     def run(self, fd):
         # Verify iceboot
-        self.result = "PASS"
         ok, txt = self.dor.isInIceboot2()
         if not ok:
             self.fail("first check for iceboot prompt failed")
@@ -368,6 +368,80 @@ class DOMAppHVTest(DOMAppTest):
     def turnOffHV(self, domapp):
         domapp.setHV(0)
         domapp.disableHV()
+
+class ChargeStampHistoTest(DOMAppHVTest):
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            doATWD = False
+            if self.__class__.__name__ == "ATWDHistoTest": doATWD = True
+            elif self.__class__.__name__ != "FADCHistoTest":
+                raise UnsupportedTestException("%s not known!" % \
+                                               self.__class__.__name__)
+
+            domapp.setMonitoringIntervals(0, 0, 0)
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.selectMUX(255)
+            domapp.setDataFormat(2)
+            domapp.setCompressionMode(2)
+            domapp.setTriggerMode(2)
+            domapp.setLC(mode=0)
+            domapp.setPulser(mode=BEACON, rate=4)
+
+            domapp.collectPedestals(100, 100, 200)
+
+            domapp.startRun()
+
+            if doATWD:
+                domapp.configureChargeStamp("atwd", 0, 50)
+            else:
+                domapp.configureChargeStamp("fadc")
+            domapp.setChargeStampHistograms(2, 1)
+
+            domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
+
+            gotRec = False
+            t = MiniTimer(self.runLength*1000)
+            while not t.expired():
+                mlist = getLastMoniMsgs(domapp)
+                for m in mlist:
+                    s1 = re.search('ATWD CS', m)
+                    if s1:
+                        gotRec = True
+                    self.debugMsgs.append(m)
+
+            ### End condition: go back to FADC mode
+            domapp.configureChargeStamp("fadc")
+            domapp.setChargeStampHistograms(0, 1)
+
+            domapp.endRun()
+            
+            if not gotRec:
+                self.fail("No charge stamp histograms found!")
+                self.appendMoni(domapp)
+                
+        except:
+            try:
+                self.fail(exc_string())
+                self.appendMoni(domapp)
+                domapp.endRun()
+            except:
+                pass
+
+class FADCHistoTest(ChargeStampHistoTest):
+    """
+    Histogram FADC (in-ice) chargestamps.  Require nonzero entries for some
+    bins in each histogram.
+    """
+    pass
+
+class ATWDHistoTest(ChargeStampHistoTest):
+    """
+    Histogram ATWD (IceTop) chargestamps.  Require nonzero entries for some
+    bins in each histogram.
+    """
+    pass
 
 class FlasherTest(DOMAppTest):
     def __init__(self, card, wire, dom, dor, abSelect='A'):
@@ -1409,10 +1483,11 @@ class TestingSet:
                 self.numpassed += 1
             else:
                 self.numfailed += 1
+                print "################################################"
                 dbg = test.getDebugTxt()
-                print "################################################"
-                if len(dbg) > 0: print test.getDebugTxt()
-                print "################################################"
+                if len(dbg) > 0:
+                    print dbg
+                    print "################################################"
                 if self.stopOnFail: sf = True
             self.numtests += 1
             test.clearDebugTxt()
@@ -1531,7 +1606,7 @@ def main():
 
     if opt.doHVTests:
         ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, SPEScalerNotZeroTest,
-                            SNDeltaSPEHitTest, SLCOnlyHVTest])
+                            SNDeltaSPEHitTest, SLCOnlyHVTest, FADCHistoTest, ATWDHistoTest])
     # Post-domapp tests
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,

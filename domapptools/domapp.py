@@ -51,6 +51,7 @@ DSC_SET_LC_CABLE_LEN            = 57
 DSC_GET_LC_CABLE_LEN            = 58
 DSC_ENABLE_SN                   = 59
 DSC_DISABLE_SN                  = 60
+DSC_SET_CHARGE_STAMP_TYPE       = 61
 
 # DATA_ACCESS message
 DATA_ACC_GET_DATA               = 11
@@ -68,6 +69,7 @@ DATA_ACC_GET_COMP_MODE          = 27
 DATA_ACC_GET_SN_DATA            = 28
 DATA_ACC_RESET_MONI_BUF         = 29
 DATA_ACC_MONI_AVAIL             = 30
+DATA_ACC_HISTO_CHARGE_STAMPS    = 34
 
 # EXPERIMENT_CONTROL messages subtypes
 EXPCONTROL_BEGIN_RUN                = 12
@@ -225,6 +227,18 @@ class DOMApp:
         """
         self.sendMsg(DATA_ACCESS, DATA_ACC_SET_COMP_MODE, data=pack('b', mode))
         
+    def setChargeStampHistograms(self, interval, prescale):
+        """
+        Set up charge stamp histogramming
+          interval = 0: disable
+          interval > 0 < 40,000,000: interval in seconds
+          interval >= 40,000,000: interval in clock ticks (up to 32 bits)
+          prescale: divisor for each bin in histogram
+        """
+        self.sendMsg(DATA_ACCESS, DATA_ACC_HISTO_CHARGE_STAMPS,
+                     data=pack('>LH', interval, prescale)
+                     )
+    
     def setTriggerMode(self, mode):
         """
         Set the DOM triggering mode
@@ -234,7 +248,7 @@ class DOMApp:
           mode = 3: flasher board triggers
         """
         self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_TRIG_MODE, data=pack('b', mode))
-       
+
     def enableSN(self, deadtime, mode):
         """
         Setup the supernova scalers.  Parameters are,
@@ -265,9 +279,29 @@ class DOMApp:
             self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_PULSER_RATE,
                          data=pack(">H", rate)
                          )
+            
     def disableSN(self):
         self.sendMsg(DOM_SLOW_CONTROL, DSC_DISABLE_SN)
-       
+        
+    def configureChargeStamp(self, type="fadc", channelSel=None, thresh=0):
+        if type == "fadc":
+            iType = 1
+        elif type == "atwd":
+            iType = 0
+        else:
+            raise Exception("Bad argument type '%s'" % type)
+        if channelSel == None:
+            iChannelSel  = 0
+            iChannelByte = 0
+        else:
+            iChannelSel  = 1
+            iChannelByte = channelSel
+        
+        self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_CHARGE_STAMP_TYPE,
+                     data=pack(">BBBBH",
+                               iType, iChannelSel, iChannelByte, 0, thresh)
+                     )
+        
     def startRun(self):
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_BEGIN_RUN)
 
