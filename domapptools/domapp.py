@@ -118,6 +118,8 @@ class MessagingException(Exception):
             return "(Message %d bytes < 8 bytes)" % len(self.msg)
         return "(MT=%d,MST=%d,LEN=%d,0x%04x,ID=0x%02x,STATUS=0x%02x)" % unpack('>BBHHBB', self.msg)
 
+class MalformedMessageStatsException(Exception): pass
+
 class DOMApp:
    
     def __init__(self, card, pair, dom, fd):
@@ -209,7 +211,9 @@ class DOMApp:
         """
         Get number of messages and idle loops from domapp
         """
-        return unpack(">2L", self.sendMsg(MESSAGE_HANDLER, MSGHAND_GET_MSG_STATS))
+        buf = self.sendMsg(MESSAGE_HANDLER, MSGHAND_GET_MSG_STATS)
+        if len(buf) != 8: raise MalformedMessageStatsException()
+        return unpack(">2L", buf)
     
     def setDataFormat(self, fmt):
         """
@@ -227,7 +231,7 @@ class DOMApp:
         """
         self.sendMsg(DATA_ACCESS, DATA_ACC_SET_COMP_MODE, data=pack('b', mode))
         
-    def setChargeStampHistograms(self, interval, prescale):
+    def setChargeStampHistograms(self, interval=0, prescale=1):
         """
         Set up charge stamp histogramming
           interval = 0: disable
@@ -283,7 +287,7 @@ class DOMApp:
     def disableSN(self):
         self.sendMsg(DOM_SLOW_CONTROL, DSC_DISABLE_SN)
         
-    def configureChargeStamp(self, type="fadc", channelSel=None, thresh=0):
+    def configureChargeStamp(self, type="fadc", channelSel=None):
         if type == "fadc":
             iType = 1
         elif type == "atwd":
@@ -298,8 +302,8 @@ class DOMApp:
             iChannelByte = channelSel
         
         self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_CHARGE_STAMP_TYPE,
-                     data=pack(">BBBBH",
-                               iType, iChannelSel, iChannelByte, 0, thresh)
+                     data=pack(">BBB",
+                               iType, iChannelSel, iChannelByte)
                      )
         
     def startRun(self):

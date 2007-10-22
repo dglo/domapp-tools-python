@@ -385,6 +385,8 @@ class ChargeStampHistoTest(DOMAppHVTest):
             domapp.selectMUX(255)
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)
+            self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
+            domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 550)
             domapp.setTriggerMode(2)
             domapp.setLC(mode=0)
             domapp.setPulser(mode=BEACON, rate=4)
@@ -394,24 +396,35 @@ class ChargeStampHistoTest(DOMAppHVTest):
             domapp.startRun()
 
             if doATWD:
-                domapp.configureChargeStamp("atwd", 0, 50)
+                domapp.configureChargeStamp("atwd")
             else:
                 domapp.configureChargeStamp("fadc")
-            domapp.setChargeStampHistograms(2, 1)
+            domapp.setChargeStampHistograms(2, 10)
 
             domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
 
-            gotRec = {}
+            gotATWDRec = {}
+            gotFADCRec = False
             t = MiniTimer(self.runLength*1000)
             while not t.expired():
+                hitdata = domapp.getWaveformData()
+                if len(hitdata) > 0:
+                    hitBuf = DeltaHitBuf(hitdata) # Does basic integrity check
+
                 mlist = getLastMoniMsgs(domapp)
                 for m in mlist:
-                    s1 = re.search('ATWD CS (\S+) (\d+)--(\d+) entries:', m)
-                    if s1:
-                        chip    = s1.group(1)
-                        chan    = int(s1.group(2))
-                        entries = s1.group(3)
-                        gotRec[chip, chan] = True
+                    if doATWD:
+                        s1 = re.search('ATWD CS (\S+) (\d+)--(\d+) entries: (.+)', m)
+                        if s1:
+                            chip    = s1.group(1)
+                            chan    = int(s1.group(2))
+                            entries = s1.group(3)
+                            gotATWDRec[chip, chan] = True
+                    else:
+                        s1 = re.search('FADC CS--(\d+) entries: (.+)', m)
+                        if s1:
+                            entries = s1.group(1)
+                            gotFADCRec = True
                     self.debugMsgs.append(m)
 
             ### End condition: go back to FADC mode
@@ -421,14 +434,19 @@ class ChargeStampHistoTest(DOMAppHVTest):
             domapp.endRun()
 
             ### Make sure I have records for each type
-            for chip in ['A','B']:
-                for chan in range(0,2):
-                    if not gotRec.has_key((chip, chan)) \
-                           or not gotRec[chip, chan]:
-                        self.fail("No charge stamp histograms found for chip %s, chan %d!" \
-                                  % (chip, chan))
-                        self.appendMoni(domapp)
-                
+            if doATWD:
+                for chip in ['A','B']:
+                    for chan in range(0,2):
+                        if not gotATWDRec.has_key((chip, chan)) \
+                               or not gotATWDRec[chip, chan]:
+                            self.fail("No ATWD charge stamp histograms found for chip %s, chan %d!" \
+                                      % (chip, chan))
+                            self.appendMoni(domapp)
+            else:
+                if not gotFADCRec:
+                    self.fail("No FADC charge stamp histograms found!")
+                    self.appendMoni(domapp)
+
         except:
             try:
                 self.fail(exc_string())
@@ -668,12 +686,18 @@ class IdleCounterTest(DOMAppTest):
                 hitdata = domapp.getWaveformData()
                 self.appendMoni(domapp)
             domapp.endRun()
-            (msgs, loops) = domapp.getMessageStats()
-            if loops == 0:
-                self.fail("msgs=%d, loops=%d: bad values!" % (msgs, loops))
-            else:
-                self.summary = "%d messages, %d loops: %2.4f%% idle" % \
-                               (msgs, loops, 100.0-100.*(float(msgs)/float(loops)))
+            try:
+                (msgs, loops) = domapp.getMessageStats()
+                if loops == 0:
+                    self.fail("msgs=%d, loops=%d: bad values!" % (msgs, loops))
+                    self.appendMoni(domapp)
+                else:
+                    self.summary = "%d messages, %d loops: %2.4f%% idle" % \
+                                   (msgs, loops, 100.0-100.*(float(msgs)/float(loops)))
+            except MalformedMessageStatsException, e:
+                self.fail("Bad return value trying to get message stats - old domapp?")
+                self.appendMoni(domapp)
+
         except Exception, e:
             self.fail(exc_string())
             self.appendMoni(domapp)            
