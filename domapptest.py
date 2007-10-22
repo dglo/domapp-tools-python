@@ -403,8 +403,12 @@ class ChargeStampHistoTest(DOMAppHVTest):
 
             domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
 
+            # Require records present, and nonzero values in the records, for
+            # FADC or, if ATWD, for at least one channel per chip.
             gotATWDRec = {}
             gotFADCRec = False
+            gotATWDCounts = {}
+            gotFADCCounts = False
             t = MiniTimer(self.runLength*1000)
             while not t.expired():
                 hitdata = domapp.getWaveformData()
@@ -419,11 +423,17 @@ class ChargeStampHistoTest(DOMAppHVTest):
                             chip    = s1.group(1)
                             chan    = int(s1.group(2))
                             entries = s1.group(3)
+                            rest    = s1.group(4)
                             gotATWDRec[chip, chan] = True
+                            for x in map(int, rest.split()):
+                                if x > 0: gotATWDCounts[chip] = True
                     else:
                         s1 = re.search('FADC CS--(\d+) entries: (.+)', m)
                         if s1:
                             entries = s1.group(1)
+                            rest    = s1.group(2)
+                            for x in map(int, rest.split()):
+                                if x > 0: gotFADCCounts = True
                             gotFADCRec = True
                     self.debugMsgs.append(m)
 
@@ -442,9 +452,15 @@ class ChargeStampHistoTest(DOMAppHVTest):
                             self.fail("No ATWD charge stamp histograms found for chip %s, chan %d!" \
                                       % (chip, chan))
                             self.appendMoni(domapp)
+                    if not gotATWDCounts.has_key(chip):
+                        self.fail("No nonzero ATWD charge stamp histogram entries found for chip %s!" % chip)
+                        self.appendMoni(domapp)
             else:
                 if not gotFADCRec:
                     self.fail("No FADC charge stamp histograms found!")
+                    self.appendMoni(domapp)
+                if not gotFADCCounts:
+                    self.fail("No nonzero FADC charge stamp histogram entries found!")
                     self.appendMoni(domapp)
 
         except:
