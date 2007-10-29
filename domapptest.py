@@ -393,13 +393,14 @@ class ChargeStampHistoTest(DOMAppHVTest):
 
             domapp.collectPedestals(100, 100, 200)
 
-            domapp.startRun()
-
             if doATWD:
-                domapp.configureChargeStamp("atwd")
+                domapp.configureChargeStamp("atwd", channelSel=None) # Select 'AUTO' mode
+                domapp.setChargeStampHistograms(2, 1000)
             else:
                 domapp.configureChargeStamp("fadc")
-            domapp.setChargeStampHistograms(2, 10)
+                domapp.setChargeStampHistograms(2, 10)
+
+            domapp.startRun()
 
             domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
 
