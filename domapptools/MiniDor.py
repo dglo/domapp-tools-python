@@ -8,7 +8,7 @@ import os.path, os
 from stat import *
 from exc_string import exc_string
 from minitimer import *
-from re import search
+from re import search, S
 from random import *
 from struct import pack
 
@@ -86,9 +86,9 @@ class MiniDor:
                 else: raise
             except Exception: raise
 
-            if search(expectStr, contents):
+            if search(expectStr, contents, S):
                 # break #<-- put this back to simulate failure
-                return True
+                return contents
             time.sleep(0.10)
         raise ExpectStringNotFoundException("Expected string '%s' did not arrive in %d msec: %s" \
                                             % (expectStr, timeoutMsec, contents))
@@ -117,7 +117,12 @@ class MiniDor:
         except Exception, e:
             return (False, exc_string())
         return (True, "")
-    
+
+    def se1(self, send, recv, timeout):
+        "Send and expect, but use exception handling"
+        self.writeTimeout(self.fd, send, timeout)
+        return self.readExpect(self.fd, recv, timeout)
+        
     def se(self, send, recv, timeout):
         "Send text, wait for recv text in timeout msec"
         try:
