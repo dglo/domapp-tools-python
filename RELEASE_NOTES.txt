@@ -1,5 +1,6 @@
 V00-02-01 ????????????????? John Jacobsen john@mail.npxdesigns.com
 Issues:
+0001914: domapptest.py - IceTop charge stamps - exercise all 3 channels in 'auto' mode
 0001813: DOMApp - charge histogramming needed
 0001845: Wait for DOMAPP READY after starting domapp
 0001755: domapptest.py did not stop on Thorsten's test hub at LBNL

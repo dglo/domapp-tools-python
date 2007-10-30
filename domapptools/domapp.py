@@ -295,15 +295,15 @@ class DOMApp:
         else:
             raise Exception("Bad argument type '%s'" % type)
         if channelSel == None:
-            iChannelSel  = 0
-            iChannelByte = 0
+            iChannelMode = 0
+            iChannelByte = 2
         else:
-            iChannelSel  = 1
+            iChannelMode  = 1
             iChannelByte = channelSel
         
         self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_CHARGE_STAMP_TYPE,
                      data=pack(">BBB",
-                               iType, iChannelSel, iChannelByte)
+                               iType, iChannelMode, iChannelByte)
                      )
         
     def startRun(self):

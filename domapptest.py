@@ -443,7 +443,7 @@ class ChargeStampHistoTest(DOMAppHVTest):
             domapp.setChargeStampHistograms(0, 1)
 
             domapp.endRun()
-
+            
             ### Make sure I have records for each type
             if doATWD:
                 for chip in ['A','B']:
