@@ -251,7 +251,7 @@ def getMd5sum(fname):
     return ret
 
 def main():
-    p = optparse.OptionParser()
+    p = optparse.OptionParser(usage="usage: %prog [options] <releasefile>")
     p.add_option("-s", "--skip-actual-upload", action="store_true", dest="doSkip",
                  help="Skip actual upload and flash step - just check versions")
     p.add_option("-v", "--verbose",            action="store_true", dest="verbose",
