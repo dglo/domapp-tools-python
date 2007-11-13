@@ -1,4 +1,5 @@
-V00-02-01 ????????????????? John Jacobsen john@mail.npxdesigns.com
+
+V00-02-01 11-13-07 John Jacobsen john@mail.npxdesigns.com
 Issues:
 0001903: Make MB upload procedure bulletproof
 0001914: domapptest.py - IceTop charge stamps - exercise all 3 channels in 'auto' mode
