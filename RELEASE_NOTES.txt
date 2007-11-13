@@ -1,5 +1,6 @@
 V00-02-01 ????????????????? John Jacobsen john@mail.npxdesigns.com
 Issues:
+0001903: Make MB upload procedure bulletproof
 0001914: domapptest.py - IceTop charge stamps - exercise all 3 channels in 'auto' mode
 0001813: DOMApp - charge histogramming needed
 0001845: Wait for DOMAPP READY after starting domapp

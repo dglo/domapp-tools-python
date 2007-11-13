@@ -90,7 +90,7 @@ class MiniDor:
                 # break #<-- put this back to simulate failure
                 return contents
             time.sleep(0.10)
-        raise ExpectStringNotFoundException("Expected string '%s' did not arrive in %d msec: %s" \
+        raise ExpectStringNotFoundException("Expected string '%s' did not arrive in %d msec: got '%s'" \
                                             % (expectStr, timeoutMsec, contents))
 
     def writeTimeout(self, fd, msg, timeoutMsec):

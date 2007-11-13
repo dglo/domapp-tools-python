@@ -1,22 +1,31 @@
-#!/usr/bin/env python
+#!/usr/bin/env python -u
+# Use -u to make unbuffered, for clean reporting to caller via ssh
 
 # UploadDOMs.py
 # John Jacobsen, NPX Designs, Inc., john@mail.npxdesigns.com
 # Started: Fri Oct 26 18:12:39 2007
 
-import unittest, optparse, re, time, threading, os, os.path, gzip, select, signal, re, md5
+import unittest, optparse, re, time, threading, os, os.path
+import gzip, select, signal, re, md5
+
 from domapptools.dor import *
 from domapptools.exc_string import exc_string
 from domapptools.domapp import *
 from domapptools.MiniDor import *
 
+def stripCR(s):
+    return re.sub('\r',' ',re.sub('\n', ' ', s))
+
 class Uploader:
-    def __init__(self, releaseFile, domHash, md5sum=None, verbose=False, doSkip=False):
+    def __init__(self, releaseFile, domHash, md5sum=None,
+                 verbose=False, doSkip=False, noFlash=False):
         self.card    = {}
         self.pair    = {}
         self.aorb    = {}
         self.doms    = []
+        self.txbytes = {}
         self.doSkip  = doSkip
+        self.noFlash = noFlash
         self.release = releaseFile
         self.verbose = verbose
         self.md5sum  = md5sum
@@ -39,6 +48,7 @@ class Uploader:
         self.lock.acquire()
         print cwd+": "+m
         self.lock.release()
+        sys.stdout.flush()
 
     def log(self, cwd, m):
         if self.verbose: self.warn(cwd, m)
@@ -47,57 +57,67 @@ class Uploader:
         dor = MiniDor(self.card[cwd],
                       self.pair[cwd],
                       self.aorb[cwd])
+        self.txbytes[cwd] = 0
         try:
-            self.log(cwd, "softboot...")
+            self.log(cwd, "SOFTBOOT1")
             dor.softboot()
-            self.log(cwd, "open...")
+            self.log(cwd, "OPEN")
             dor.open()
-            self.log(cwd, "check iceboot...")
+            self.log(cwd, "CHECK_ICEBOOT1")
             ok, txt = dor.isInIceboot2()
             if not ok:
-                self.warn(cwd, "%s\nNOT in Iceboot!" % txt)
+                self.warn(cwd, "%s\nNOT in Iceboot!" % stripCR(txt))
                 self.warn(cwd, "FAIL")
                 return
-            self.log(cwd, "iset command ...")
+            self.log(cwd, "ISET")
             txt = dor.se1("$ffffffff $01000000 $00800000 4 / iset\r\n", ">", 30000)
 
             if not self.doSkip:
-                self.log(cwd, "send buffer...")
                 fileSize = os.path.getsize(self.release)
                 txt = dor.se1("%d read-bin\r\n" % fileSize, "read-bin\r\n", 30000)
                 f = file(self.release)
                 segsize  = 4000 # =< 4092
                 buf = None
+                totbytes = os.path.getsize(self.release)
+                txbytes  = 0
+                timeout = 10*1000
+                t = MiniTimer(timeout)
+                self.warn(cwd, "SENDING (0%)")
                 while True:
                     buf = f.read(segsize)
                     if (not buf) or len(buf) == 0: break
-                    # Drain current buffer (should generally go in just try)
                     while len(buf) > 0:
-                        select.select([],[dor.fd],[])
-                        nw = os.write(dor.fd, buf)
-                        buf = buf[nw:]
-                        
+                        ready = select.select([],[dor.fd],[],10)
+                        if len(ready[1]) > 0:
+                            nw = os.write(dor.fd, buf)
+                            self.txbytes[cwd] += nw
+                            txbytes += nw
+                            buf = buf[nw:]
+                        if t.expired():
+                            self.warn(cwd, "SENDING (%2.3f%%)" % (100.*txbytes/float(totbytes)))
+                            t = MiniTimer(timeout)
+                       
                 # Make sure iceboot still there
-                self.log(cwd, "check iceboot again...")
+                self.log(cwd, "CHECK_ICEBOOT2")
                 txt = dor.se1("\r", "> $", 10000)
 
                 # Get location and length (last two items on stack)
-                self.log(cwd, "get remote details...")
+                self.log(cwd, "CHECK_STACK")
                 txt = dor.se1(".s\r", "\d+ \d+\s+> $", 10000)
                 m = re.search('(\d+) (\d+)\s+> $', txt)
                 if not m:
-                    self.warn(cwd, "Bad stack details '%s'!" % txt)
+                    self.warn(cwd, "Bad stack details '%s'!  Flash not changed." % stripCR(txt))
                     self.warn(cwd, "FAIL")
                     return
                 loc, length = m.group(1), m.group(2)
 
                 # Check md5sum
                 if self.md5sum:
-                    self.log(cwd, "check md5sum...")
+                    self.log(cwd, "CHECK_MD5SUM")
                     txt = dor.se1("md5sum type crlf type\r", "md5sum.+?> $", 10000)
                     m = re.search('md5sum.+?\s+(\w+)\s+> $', txt)
                     if not m:
-                        self.warn(cwd, "Unexpected md5sum '%s'!" % txt)
+                        self.warn(cwd, "Unexpected md5sum '%s'!  Flash not changed." % stripCR(txt))
                         self.warn(cwd, "FAIL")
                         return
                     if self.md5sum != m.group(1):
@@ -105,39 +125,40 @@ class Uploader:
                                                                                  m.group(1)))
                         self.warn(cwd, "FAIL")
                         return
-                    self.log(cwd, "md5sum %s" % m.group(1))
+                    self.log(cwd, "MD5SUM (%s)" % m.group(1))
                 
                 # gunzip/hex-to-bin command
-                self.log(cwd, "gunzip image on remote...")
+                self.log(cwd, "GUNZIP")
                 txt = dor.se1("%s %s gunzip $01000000 $01000000 hex-to-bin\r" % (loc, length),
                               "hex-to-bin\s+> $", 30000)
-                self.log(cwd, "Got %s" % txt)
+                self.log(cwd, "Got %s" % stripCR(txt))
 
                 # Flash the image.  Here we want to make sure there is no extra output!
-                self.log(cwd, "FLASHING IMAGE...")
-                txt0 = dor.se1("$01000000 $00400000 install-image\r",
-                              "install-image\s+install:.+?are you sure [y/n]?",
-                              10000)
-                txt1 = dor.se1("y\r", "^y.*> $", 240000)
-                m = re.search('write ERRORS detected', txt1, re.S)
-                if m:
-                    self.warn(cwd, "WARNING: FLASH ERRORS\n"+txt0+txt1)
-                m = re.search("chip 0: unlock\.\.\. erase\.\.\.\s+"+
-                              "chip 1: unlock\.\.\. erase\.\.\.\s+"+
-                              "Programming\.\.\.\s+"+
-                              "chip 0: lock\.\.\.\s+"+
-                              "chip 1: lock\.\.\.\s+> $", txt1, re.S)
-                if not m:
-                    self.warn(cwd, "WARNING: unexpected flash write output\n"+txt0+txt1)
+                if not self.noFlash:
+                    self.warn(cwd, "INSTALLING")
+                    txt0 = dor.se1("$01000000 $00400000 install-image\r",
+                                   "install-image\s+install:.+?are you sure [y/n]?",
+                                   10000)
+                    txt1 = dor.se1("y\r", "^y.*> $", 240000)
+                    m = re.search('write ERRORS detected', txt1, re.S)
+                    if m:
+                        self.warn(cwd, "WARNING: FLASH ERRORS\n"+stripCR(txt0+txt1))
+                    m = re.search("chip 0: unlock\.\.\. erase\.\.\.\s+"+
+                                  "chip 1: unlock\.\.\. erase\.\.\.\s+"+
+                                  "Programming\.\.\.\s+"+
+                                  "chip 0: lock\.\.\.\s+"+
+                                  "chip 1: lock\.\.\.\s+> $", txt1, re.S)
+                    if not m:
+                        self.warn(cwd, "WARNING: unexpected flash write output\n"+stripCR(txt0+txt1))
                     
             # Check version
-            self.log(cwd, "softboot...")
+            self.log(cwd, "SOFTBOOT2")
             dor.softboot()
-            self.log(cwd, "check version...")
-            txt = dor.se1("\r\n", ">", 5000)
+            self.log(cwd, "CHECK_VERSION")
+            txt = dor.se1("\r\n", ">", 100000)
             m = re.search('Iceboot.+?build (\d+)\.', txt)
             if not m:
-                self.warn(cwd, "WARNING: Build number not found: %s", txt)
+                self.warn(cwd, "WARNING: Build number not found: %s", stripCR(txt))
             else:
                 self.warn(cwd, "DONE (%s)" % m.group(1))
             dor.close()
@@ -150,34 +171,19 @@ class Uploader:
             self.warn(cwd, "IOError: "+str(e))
             self.warn(cwd, "FAIL")
             return
+        except ExpectStringNotFoundException, e:
+            self.warn(cwd, "Unexpected DOM output: "+str(e))
+            self.warn(cwd, "FAIL")
+            return
         except Exception, e:
             self.warn(cwd, exc_string())
             self.warn(cwd, "FAIL")
             return
         
-    def runWatcher(self):
-        """
-        We don't wait to join this thread, so don't put any crucial
-        cleanup in here
-        """
-        i = 1
-        while True:
-            domList = []
-            for dom in self.doms:
-                if self.threads[dom].isAlive(): domList.append(dom)
-            if not domList: break
-            self.lock.acquire()
-            if (i % 30) == 0 and self.verbose: print "Waiting on "+" ".join(domList)+"..."
-            self.lock.release()
-            time.sleep(1)
-            i += 1
-        
     def go(self):
         for dom in self.doms:
             self.threads[dom] = threading.Thread(target=self.runThread, args=(dom, ))
             self.threads[dom].start()
-        self.watchThread = threading.Thread(target=self.runWatcher)
-        self.watchThread.start()
         for dom in self.doms:
             try:
                 while True:
@@ -254,9 +260,12 @@ def main():
     p = optparse.OptionParser(usage="usage: %prog [options] <releasefile>")
     p.add_option("-s", "--skip-actual-upload", action="store_true", dest="doSkip",
                  help="Skip actual upload and flash step - just check versions")
+    p.add_option("-f", "--skip-flash",         action="store_true", dest="noFlash",
+                 help="Do everything but write the actual flash")
     p.add_option("-v", "--verbose",            action="store_true", dest="verbose",
                  help="Print more output")
     p.set_defaults(doSkip  = False,
+                   noFlash = False,
                    verbose = False)
     
     opt, args = p.parse_args()
@@ -301,7 +310,7 @@ def main():
         md5sum = None
 
     # Do the upload
-    u = Uploader(tmpFile, uploadSet, md5sum, opt.verbose, opt.doSkip)
+    u = Uploader(tmpFile, uploadSet, md5sum, opt.verbose, opt.doSkip, opt.noFlash)
     u.go()
 
     # Clean up
