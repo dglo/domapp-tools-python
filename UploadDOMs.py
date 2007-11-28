@@ -129,7 +129,7 @@ class Uploader:
                 # gunzip/hex-to-bin command
                 self.log(cwd, "GUNZIP")
                 txt = dor.se1("%s %s gunzip $01000000 $01000000 hex-to-bin\r" % (loc, length),
-                              "hex-to-bin\s+> $", 30000)
+                              "hex-to-bin\s+> $", 60000)
                 self.log(cwd, "Got %s" % stripCR(txt))
 
                 # Flash the image.  Here we want to make sure there is no extra output!
