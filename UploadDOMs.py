@@ -1,5 +1,4 @@
-#!/usr/bin/env python -u
-# Use -u to make unbuffered, for clean reporting to caller via ssh
+#!/usr/bin/env python
 
 # UploadDOMs.py
 # John Jacobsen, NPX Designs, Inc., john@mail.npxdesigns.com
