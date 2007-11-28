@@ -8,7 +8,7 @@ import os.path, os
 from stat import *
 from exc_string import exc_string
 from minitimer import *
-from re import search, S
+from re import search, S, sub
 from random import *
 from struct import pack
 
@@ -91,8 +91,9 @@ class MiniDor:
                 return contents
             time.sleep(0.10)
         raise ExpectStringNotFoundException("Expected string '%s' did not arrive in %d msec: got '%s'" \
-                                            % (expectStr, timeoutMsec, contents))
-
+                                            % (expectStr, timeoutMsec,
+                                               sub('\r',' ', sub('\n', ' ', contents))))
+    
     def writeTimeout(self, fd, msg, timeoutMsec):
         nb0   = len(msg)
         t = MiniTimer(timeoutMsec)
