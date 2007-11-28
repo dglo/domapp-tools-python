@@ -4,7 +4,7 @@
 # John Jacobsen, NPX Designs, Inc., john@mail.npxdesigns.com
 # Started: Fri Oct 26 18:12:39 2007
 
-import unittest, optparse, re, time, threading, os, os.path
+import unittest, optparse, re, time, threading, os, os.path, random
 import gzip, select, signal, re, md5
 
 from domapptools.dor import *
@@ -51,23 +51,46 @@ class Uploader:
 
     def log(self, cwd, m):
         if self.verbose: self.warn(cwd, m)
+
+    def dumpEverything(self, cwd, dor):
+        txt = dor.fpgaRegs()
+        txt += dor.commStats()
+        for line in txt.split('\n'):
+            self.warn(cwd, "WARNING: "+line)
         
     def runThread(self, cwd):
         dor = MiniDor(self.card[cwd],
                       self.pair[cwd],
                       self.aorb[cwd])
+        dor.commStatReset()
         self.txbytes[cwd] = 0
         try:
-            self.log(cwd, "SOFTBOOT1")
-            dor.softboot()
-            self.log(cwd, "OPEN")
-            dor.open()
-            self.log(cwd, "CHECK_ICEBOOT1")
-            ok, txt = dor.isInIceboot2()
-            if not ok:
-                self.warn(cwd, "%s\nNOT in Iceboot!" % stripCR(txt))
-                self.warn(cwd, "FAIL")
-                return
+            nloops = 0
+            while nloops < 5:
+                try:
+                    self.log(cwd, "SOFTBOOT1")
+                    dor.softboot()
+                    self.log(cwd, "OPEN")
+                    dor.open()
+                    # if random() < 0.1:
+                    #     raise IOError('Failed to open /dev file')
+                    self.log(cwd, "CHECK_ICEBOOT1")
+                    txt = dor.se1("\r", "> $", 10000)
+                    # if random() < 0.1:
+                    #    raise ExpectStringNotFoundException(txt)
+                    break
+                # Make a broad except block here to retry at least once, since so many things
+                # can go wrong with so-called softboot failures or "dropped DOMs"
+                except Exception, e:
+                    nloops += 1
+                    self.warn(cwd, "WARNING: retrying (trial %d) after exception '%s'" % \
+                             (nloops, stripCR(str(e))))
+                    self.dumpEverything(cwd, dor)
+                    try:
+                        dor.close()
+                    except Exception:
+                        pass
+            
             self.log(cwd, "ISET")
             txt = dor.se1("$ffffffff $01000000 $00800000 4 / iset\r\n", ">", 30000)
 

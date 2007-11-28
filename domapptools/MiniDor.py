@@ -46,6 +46,11 @@ class MiniDor:
         f = file(os.path.join(self.dompath(), "comstat"),"r")
         return f.read()
 
+    def commStatReset(self):
+        f = file(os.path.join(self.dompath(), "comstat"),"w")
+        f.write("reset\n")
+        f.close()
+
     def fpgaRegs(self):
         f = file(os.path.join(self.cardpath(), "fpga"),"r")
         return f.read()
