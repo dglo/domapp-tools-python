@@ -780,6 +780,7 @@ class MessageSizePulserTest(DOMAppTest):
             domapp.setPulser(mode=FE_PULSER, rate=8000)
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)
+            domapp.setLC(mode=0) # Make sure no LC is required
             domapp.startRun()
             domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
 
