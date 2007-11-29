@@ -1,4 +1,4 @@
-V00-02-02 ??-??-07 John Jacobsen john@mail.npxdesigns.com
+V00-02-02 11-29-07 John Jacobsen john@mail.npxdesigns.com
 Issues:
 0002071: UploadDOMs.py - Retry softboot/open/get iceboot prompt sequence in case of 'dropped doms'
 0002070: UploadDOMs.py - Timeout for gunzip step is too short
