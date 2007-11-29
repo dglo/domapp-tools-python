@@ -23,7 +23,7 @@ def doSetup(version, pyVersion):
           author_email="john@mail.npxdesigns.com",
           url="http://www.npxdesigns.com",
           packages=["domapptools"],
-          scripts=["domapptest.py", "DOMPrep.py"],
+          scripts=["domapptest.py", "DOMPrep.py", "UploadDOMs.py"],
           data_files=[("/usr/local/share", ["domapp-tools-python-version"])]
           )
     

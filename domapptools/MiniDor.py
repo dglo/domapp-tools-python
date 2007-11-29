@@ -8,7 +8,7 @@ import os.path, os
 from stat import *
 from exc_string import exc_string
 from minitimer import *
-from re import search
+from re import search, S, sub
 from random import *
 from struct import pack
 
@@ -45,6 +45,11 @@ class MiniDor:
     def commStats(self):
         f = file(os.path.join(self.dompath(), "comstat"),"r")
         return f.read()
+
+    def commStatReset(self):
+        f = file(os.path.join(self.dompath(), "comstat"),"w")
+        f.write("reset\n")
+        f.close()
 
     def fpgaRegs(self):
         f = file(os.path.join(self.cardpath(), "fpga"),"r")
@@ -86,13 +91,14 @@ class MiniDor:
                 else: raise
             except Exception: raise
 
-            if search(expectStr, contents):
+            if search(expectStr, contents, S):
                 # break #<-- put this back to simulate failure
-                return True
+                return contents
             time.sleep(0.10)
-        raise ExpectStringNotFoundException("Expected string '%s' did not arrive in %d msec: %s" \
-                                            % (expectStr, timeoutMsec, contents))
-
+        raise ExpectStringNotFoundException("Expected string '%s' did not arrive in %d msec: got '%s'" \
+                                            % (expectStr, timeoutMsec,
+                                               sub('\r',' ', sub('\n', ' ', contents))))
+    
     def writeTimeout(self, fd, msg, timeoutMsec):
         nb0   = len(msg)
         t = MiniTimer(timeoutMsec)
@@ -117,7 +123,12 @@ class MiniDor:
         except Exception, e:
             return (False, exc_string())
         return (True, "")
-    
+
+    def se1(self, send, recv, timeout):
+        "Send and expect, but use exception handling"
+        self.writeTimeout(self.fd, send, timeout)
+        return self.readExpect(self.fd, recv, timeout)
+        
     def se(self, send, recv, timeout):
         "Send text, wait for recv text in timeout msec"
         try:
@@ -133,12 +144,9 @@ class MiniDor:
     def isInConfigboot2(self):      return self.se("\r\n", "#", 5000)
     def configbootToIceboot2(self): return self.se("r",    ">", 5000)
     def icebootToConfigboot2(self): return self.se("boot-serial reboot\r\n", "#", 5000)
+    def icebootToDomapp2(self):     return self.se("domapp\r\n", "DOMAPP READY", 5000)
     def icebootToEcho2(self):
         ok, txt = self.se("echo-mode\r\n", "echo-mode", 5000)
-        if ok: time.sleep(MiniDor.fpgaReloadSleepTime)
-        return (ok, txt)
-    def icebootToDomapp2(self):
-        ok, txt = self.se("domapp\r\n", "domapp", 5000)
         if ok: time.sleep(MiniDor.fpgaReloadSleepTime)
         return (ok, txt)
     def echoRandomPacket2(self, maxlen, timeout):
@@ -181,8 +189,8 @@ class MiniDor:
         ok, txt = self.se("\r\n", ">", 5000)
         if not ok: return (False, "%s\ndidn't get iceboot prompt!" % txt)
         # Exec the new domapp program
-        ok, txt = self.se("gunzip exec\r\n", "exec", 5000)
-        if not ok: return (False, "%s\ndidn't get exec!" % txt)
+        ok, txt = self.se("gunzip exec\r\n", "READY", 5000)
+        if not ok: return (False, "%s\ndidn't get READY!" % txt)
         return (True, "")
     
     def isInIceboot(self):         return self.isInIceboot2()[0]

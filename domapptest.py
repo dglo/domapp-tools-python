@@ -22,6 +22,7 @@ import optparse
 
 class WriteTimeoutException(Exception):             pass
 class RepeatedTestChangesStateException(Exception): pass
+class UnsupportedTestException(Exception):          pass
 
 class DOMTest:
     STATE_ICEBOOT    = "ib"
@@ -78,7 +79,7 @@ class DOMTest:
 
     def fail(self, str):
         self.result = "FAIL"
-        self.debugMsgs.append(str)
+        self.summary = str
         
 class ConfigbootToIceboot(DOMTest):
     """
@@ -174,7 +175,6 @@ class SoftbootCycle(DOMTest):
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ICEBOOT)
     def run(self, fd):
         # Verify iceboot
-        self.result = "PASS"
         ok, txt = self.dor.isInIceboot2()
         if not ok:
             self.fail("first check for iceboot prompt failed")
@@ -354,6 +354,7 @@ class DOMAppTest(DOMTest):
 
 class DOMAppHVTest(DOMAppTest):
     "Subclass of DOMTest with an HV-setting method"
+    nominalHVVolts = 900 # Is this the best value?
     def setHV(self, domapp, hv):
         HV_TOLERANCE = 20   # HV must be correct to 10 Volts (20 units)
         domapp.enableHV()
@@ -368,6 +369,123 @@ class DOMAppHVTest(DOMAppTest):
         domapp.setHV(0)
         domapp.disableHV()
 
+class ChargeStampHistoTest(DOMAppHVTest):
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            doATWD = False
+            if self.__class__.__name__ == "ATWDHistoTest": doATWD = True
+            elif self.__class__.__name__ != "FADCHistoTest":
+                raise UnsupportedTestException("%s not known!" % \
+                                               self.__class__.__name__)
+
+            domapp.setMonitoringIntervals(0, 0, 0)
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.selectMUX(255)
+            domapp.setDataFormat(2)
+            domapp.setCompressionMode(2)
+            self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
+            domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 550)
+            domapp.setTriggerMode(2)
+            domapp.setLC(mode=0)
+            domapp.setPulser(mode=BEACON, rate=4)
+
+            domapp.collectPedestals(100, 100, 200)
+
+            if doATWD:
+                domapp.configureChargeStamp("atwd", channelSel=None) # Select 'AUTO' mode
+                domapp.setChargeStampHistograms(2, 1000)
+            else:
+                domapp.configureChargeStamp("fadc")
+                domapp.setChargeStampHistograms(2, 10)
+
+            domapp.startRun()
+
+            domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
+
+            # Require records present, and nonzero values in the records, for
+            # FADC or, if ATWD, for at least one channel per chip.
+            gotATWDRec = {}
+            gotFADCRec = False
+            gotATWDCounts = {}
+            gotFADCCounts = False
+            t = MiniTimer(self.runLength*1000)
+            while not t.expired():
+                hitdata = domapp.getWaveformData()
+                if len(hitdata) > 0:
+                    hitBuf = DeltaHitBuf(hitdata) # Does basic integrity check
+
+                mlist = getLastMoniMsgs(domapp)
+                for m in mlist:
+                    if doATWD:
+                        s1 = re.search('ATWD CS (\S+) (\d+)--(\d+) entries: (.+)', m)
+                        if s1:
+                            chip    = s1.group(1)
+                            chan    = int(s1.group(2))
+                            entries = s1.group(3)
+                            rest    = s1.group(4)
+                            gotATWDRec[chip, chan] = True
+                            for x in map(int, rest.split()):
+                                if x > 0: gotATWDCounts[chip] = True
+                    else:
+                        s1 = re.search('FADC CS--(\d+) entries: (.+)', m)
+                        if s1:
+                            entries = s1.group(1)
+                            rest    = s1.group(2)
+                            for x in map(int, rest.split()):
+                                if x > 0: gotFADCCounts = True
+                            gotFADCRec = True
+                    self.debugMsgs.append(m)
+
+            ### End condition: go back to FADC mode
+            domapp.configureChargeStamp("fadc")
+            domapp.setChargeStampHistograms(0, 1)
+
+            domapp.endRun()
+            
+            ### Make sure I have records for each type
+            if doATWD:
+                for chip in ['A','B']:
+                    for chan in range(0,2):
+                        if not gotATWDRec.has_key((chip, chan)) \
+                               or not gotATWDRec[chip, chan]:
+                            self.fail("No ATWD charge stamp histograms found for chip %s, chan %d!" \
+                                      % (chip, chan))
+                            self.appendMoni(domapp)
+                    if not gotATWDCounts.has_key(chip):
+                        self.fail("No nonzero ATWD charge stamp histogram entries found for chip %s!" % chip)
+                        self.appendMoni(domapp)
+            else:
+                if not gotFADCRec:
+                    self.fail("No FADC charge stamp histograms found!")
+                    self.appendMoni(domapp)
+                if not gotFADCCounts:
+                    self.fail("No nonzero FADC charge stamp histogram entries found!")
+                    self.appendMoni(domapp)
+
+        except:
+            try:
+                self.fail(exc_string())
+                self.appendMoni(domapp)
+                domapp.endRun()
+            except:
+                pass
+
+class FADCHistoTest(ChargeStampHistoTest):
+    """
+    Histogram FADC (in-ice) chargestamps.  Require nonzero entries for some
+    bins in each histogram.
+    """
+    pass
+
+class ATWDHistoTest(ChargeStampHistoTest):
+    """
+    Histogram ATWD (IceTop) chargestamps.  Require nonzero entries for some
+    bins in each histogram.
+    """
+    pass
+
 class FlasherTest(DOMAppTest):
     def __init__(self, card, wire, dom, dor, abSelect='A'):
         DOMAppTest.__init__(self, card, wire, dom, dor)
@@ -379,11 +497,15 @@ class FlasherTest(DOMAppTest):
             domapp.setMonitoringIntervals(0, 0, 0)
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
+            setDAC(domapp, DAC_FLASHER_REF, 450)
+            domapp.collectPedestals(100, 100, 200)
+            domapp.setPulser(mode=BEACON) # Turn pulser off
+            domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
             domapp.setTriggerMode(3)
             domapp.setCompressionMode(0)
-#            domapp.setPulser(mode=BEACON, rate=1)
+            domapp.setDataFormat(0)
             domapp.selectMUX(3)
-            domapp.startFBRun(1, 10, 0, 1, 100)
+            domapp.startFBRun(127, 50, 0, 1, 100)
             domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
         except Exception, e:
             self.fail(exc_string())
@@ -393,7 +515,8 @@ class FlasherTest(DOMAppTest):
         t = MiniTimer(self.runLength*1000)
         gotData = False
         nhits = 0
-        while not t.expired():
+        ok = True
+        while ok and not t.expired():
             try:
                 hitdata = domapp.getWaveformData()
             except Exception, e:
@@ -406,8 +529,41 @@ class FlasherTest(DOMAppTest):
                 hitBuf = EngHitBuf(hitdata)
                 for hit in hitBuf.next():
                     nhits += 1
-                    trigType = hit.trigType
-                    print "Trigger type %d" % trigType
+                    if hit.trigSource != 3:
+                        self.fail("Bad trigger type (%d) in flasher hit!"
+                                  % hit.trigSource)
+                        self.appendMoni(domapp)
+                        self.debugMsgs.append(hit)
+                        ok = False
+                        break
+                    if not hit.fbRunInProgress:
+                        self.fail("Hit indicates flasher run is not in progress!!!")
+                        self.appendMoni(domapp)
+                        self.debugMsgs.append(hit)
+                        ok = False
+                        break
+                    if len(hit.atwd[3]) != 128:
+                        self.fail("Insufficient channels (%d) in ATWD3"
+                                  % len(hit.atwd[3]))
+                        self.appendMoni(domapp)
+                        self.debugMsgs.append(hit)
+                        ok = False
+                        break
+                    min = None
+                    max = None
+                    for s in hit.atwd[3]:
+                        if min is None or s < min: min = s
+                        if max is None or s > max: max = s
+                    top = 800
+                    bot = 500
+                    if max < top or min > bot:
+                        self.fail("Current min(%d), max(%d): out of range (%d, %d)!"
+                                  % (min, max, bot, top))
+                        self.appendMoni(domapp)
+                        self.debugMsgs.append(hit)
+                        ok = False
+                        break
+                    
         try:
             domapp.endRun()
         except Exception, e:
@@ -523,6 +679,48 @@ class DOMIDTest(QuickDOMAppTest):
         except Exception, e:
             self.fail(exc_string())
 
+class IdleCounterTest(DOMAppTest):
+    """
+    Test idle counters in monitoring stream
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            domapp.setMonitoringIntervals(0, 0, 0)
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.selectMUX(255)
+            domapp.setDataFormat(2)
+            domapp.setCompressionMode(2)
+            domapp.setTriggerMode(2)
+            domapp.setPulser(mode=FE_PULSER, rate=200)
+            domapp.setLC(mode=0)
+            domapp.startRun()
+            domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
+            t = MiniTimer(self.runLength*1000)
+            while not t.expired():
+                # Get (and toss) hit data
+                hitdata = domapp.getWaveformData()
+                self.appendMoni(domapp)
+            domapp.endRun()
+            try:
+                (msgs, loops) = domapp.getMessageStats()
+                if loops == 0:
+                    self.fail("msgs=%d, loops=%d: bad values!" % (msgs, loops))
+                    self.appendMoni(domapp)
+                else:
+                    self.summary = "%d messages, %d loops: %2.4f%% idle" % \
+                                   (msgs, loops, 100.0-100.*(float(msgs)/float(loops)))
+            except MalformedMessageStatsException, e:
+                self.fail("Bad return value trying to get message stats - old domapp?")
+                self.appendMoni(domapp)
+
+        except Exception, e:
+            self.fail(exc_string())
+            self.appendMoni(domapp)            
+            try: domapp.endRun()
+            except: pass
+        
 class ScalerDeadtimePulserTest(DOMAppTest):
     """
     Set fast moni interval, enable pulser and look for nonzero
@@ -582,6 +780,7 @@ class MessageSizePulserTest(DOMAppTest):
             domapp.setPulser(mode=FE_PULSER, rate=8000)
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)
+            domapp.setLC(mode=0) # Make sure no LC is required
             domapp.startRun()
             domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
 
@@ -604,6 +803,77 @@ class MessageSizePulserTest(DOMAppTest):
 
         if maxMsgSize < 3000: self.fail("Maximum message size (%d bytes) too small!"
                                          % maxMsgSize)
+
+class SPEScalerNotZeroTest(DOMAppHVTest):
+    """
+    Read out scalers and make sure, after the first readout, that
+    at least the SPE scaler values are nonzero
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            domapp.setMonitoringIntervals(0, 0, 0)
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.setTriggerMode(2)
+            domapp.selectMUX(255)
+            self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
+            domapp.setPulser(mode=BEACON, rate=4)
+            domapp.setDataFormat(2)
+            domapp.setCompressionMode(2)
+            domapp.setLC(mode=1, type=2, source=0, span=1)
+            domapp.startRun()            
+            domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
+            t = MiniTimer(self.runLength*1000)
+            fastVirgin  = True
+            HWVirgin    = True
+            gotMoniFast = False
+            gotMoniHW   = False
+            ok      = True
+            while ok and not t.expired():
+                mlist = getLastMoniMsgs(domapp)
+                for m in mlist:
+                    self.debugMsgs.append(m)
+                    s1 = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
+                    s2 = re.search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
+                    if s1:
+                        gotMoniFast = True
+                        if fastVirgin: fastVirgin = False # Skip first record which might be smaller or zero
+                        else:
+                            fSPE = int(s1.group(1))
+                            if fSPE < 1:
+                                self.fail("Insufficient 'fast' SPE scaler value (%d counts)" % fSPE)
+                                ok = False
+                                break
+                    if s2:
+                        gotMoniHW = True
+                        if HWVirgin: HWVirgin = False
+                        else:
+                            hwSPE = int(s2.group(1))
+                            if hwSPE < 1:
+                                self.fail("Insufficient 'HW' SPE scaler value (%d counts)" % hwSPE)
+                                ok = False
+                                break
+                            
+            if not gotMoniFast:
+                self.fail("Got no 'fast' monitoring records in run!")
+                self.appendMoni(domapp)
+            if not gotMoniHW:
+                self.fail("Got no 'HW' monitoring records in run!")
+                self.appendMoni(domapp)
+                
+            domapp.endRun()
+            self.turnOffHV(domapp)
+   
+        except Exception, e:
+            self.fail(exc_string())
+            try:
+                self.turnOffHV(domapp)
+                domapp.endRun()
+            except:
+                pass
+            self.appendMoni(domapp)
+            return
         
 class FastMoniTestHV(DOMAppHVTest):
     """
@@ -611,10 +881,11 @@ class FastMoniTestHV(DOMAppHVTest):
     is roughly correct; check that SPE and MPE scalers match those in
     so-called 'Hardware State Events'
     """
+    # FIXME: clean up (simplify) exception handling below - some cases not
+    #        caught correctly
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         numZeroRecs         = 0
-        NOMINAL_HV_VOLTS    = 900 # Is this the best value?
         fastInterval        = 2 # Number of seconds delay between records
         tolerance           = 4 # Want to be within this many records of expected
         fastMoniRecordCount = 0
@@ -628,7 +899,7 @@ class FastMoniTestHV(DOMAppHVTest):
             setDefaultDACs(domapp)
             domapp.setTriggerMode(2)
             domapp.setPulser(mode=BEACON, rate=4)
-            self.setHV(domapp, NOMINAL_HV_VOLTS)
+            self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
             domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 550)
             domapp.selectMUX(255)
             domapp.setDataFormat(2)
@@ -637,6 +908,10 @@ class FastMoniTestHV(DOMAppHVTest):
             domapp.setMonitoringIntervals(hwInt=fastInterval, fastInt=fastInterval)
         except Exception, e:
             self.fail(exc_string())
+            try:
+                self.turnOffHV(domapp)
+            except:
+                pass
             self.appendMoni(domapp)
             return
 
@@ -743,14 +1018,13 @@ class SLCOnlyTest(DOMAppTest):
     """
     def run(self, fd, doHV=False):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
-        NOMINAL_HV_VOLTS = 900 # Is this the best value?
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
             domapp.setTriggerMode(2)
             domapp.selectMUX(255)
             if doHV:
-                self.setHV(domapp, NOMINAL_HV_VOLTS)
+                self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
                 domapp.setPulser(mode=BEACON, rate=4)
             else:
                 domapp.setPulser(mode=FE_PULSER, rate=10)
@@ -816,14 +1090,13 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
     """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)        
-        NOMINAL_HV_VOLTS = 900 # Is this the best value?
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
             domapp.setTriggerMode(2)
             domapp.selectMUX(255)
             domapp.setMonitoringIntervals()
-            self.setHV(domapp, NOMINAL_HV_VOLTS)
+            self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
             domapp.setPulser(mode=BEACON, rate=4)
             domapp.enableSN(6400, 0)
             domapp.setMonitoringIntervals()
@@ -893,7 +1166,7 @@ class PedestalStabilityTest(DOMAppHVTest):
     """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)        
-        NOMINAL_HV_VOLTS   = 800 # Is this the best value?
+        PEDESTAL_HV_VOLTS   = 800 # Is this the best value?
         ATWD_PEDS_PER_LOOP = 100 
         FADC_PEDS_PER_LOOP = 200 
         MAX_ALLOWED_RMS    = 1.0
@@ -906,7 +1179,7 @@ class PedestalStabilityTest(DOMAppHVTest):
             domapp.setMonitoringIntervals()
 
             ### Turn on HV
-            self.setHV(domapp, NOMINAL_HV_VOLTS)
+            self.setHV(domapp, PEDESTAL_HV_VOLTS)
             
             ### Collect pedestals N times
 
@@ -1260,10 +1533,11 @@ class TestingSet:
                 self.numpassed += 1
             else:
                 self.numfailed += 1
+                print "################################################"
                 dbg = test.getDebugTxt()
-                print "################################################"
-                if len(dbg) > 0: print test.getDebugTxt()
-                print "################################################"
+                if len(dbg) > 0:
+                    print dbg
+                    print "################################################"
                 if self.stopOnFail: sf = True
             self.numtests += 1
             test.clearDebugTxt()
@@ -1314,9 +1588,10 @@ def main():
                  dest="doHVTests",    help="Perform HV tests")
 
     p.add_option("-F", "--flasher-tests",
-                 action="store_true",
-                 dest="doFlasherTests", help="Perform flasher tests")
-    
+                 action="store",      type="string",
+                 dest="doFlasherTests",
+                 help="Perform flasher tests, arg. is 'A' or 'B'")
+        
     p.add_option("-l", "--list-tests",
                  action="store_true",
                  dest="listTests",    help="List tests to be performed")
@@ -1345,7 +1620,7 @@ def main():
     
     p.set_defaults(stopFail         = False,
                    doHVTests        = False,
-                   doFlasherTests   = False,
+                   doFlasherTests   = None,
                    setDuration      = None,
                    repeatCount      = None,
                    doOnly           = False,
@@ -1363,17 +1638,26 @@ def main():
                    CheckIceboot,
                    SoftbootCycle,
                    IcebootToDomapp]
+
+
     # Domapp tests have to be kept together for the
     # -o option to work correctly (FIXME)
-    ListOfTests.extend([GetDomappRelease, DOMIDTest, DeltaCompressionBeaconTest,
-                        SNTest, PedestalMonitoringTest, ScalerDeadtimePulserTest,
+    ListOfTests.extend([GetDomappRelease, DOMIDTest, SNTest, DeltaCompressionBeaconTest,
+                        PedestalMonitoringTest, ScalerDeadtimePulserTest, IdleCounterTest,
                         SLCOnlyPulserTest, MessageSizePulserTest])
-    if opt.doHVTests:
-        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, SNDeltaSPEHitTest, SLCOnlyHVTest])
 
-    if opt.doFlasherTests:
-        ListOfTests.extend([FlasherATest, FlasherBTest])
-        
+    if opt.doFlasherTests == "A":
+        ListOfTests.extend([FlasherATest])
+    elif opt.doFlasherTests == "B":
+        ListOfTests.extend([FlasherBTest])
+    elif opt.doFlasherTests != None:
+        print "Flasher test arg must be 'A' or 'B'"
+        raise SystemExit
+
+    if opt.doHVTests:
+        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, SPEScalerNotZeroTest,
+                            SNDeltaSPEHitTest, SLCOnlyHVTest, FADCHistoTest, ATWDHistoTest])
+    # Post-domapp tests
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,
                         EchoTest,

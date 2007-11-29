@@ -1,3 +1,21 @@
+V00-02-02 11-29-07 John Jacobsen john@mail.npxdesigns.com
+Issues:
+0002071: UploadDOMs.py - Retry softboot/open/get iceboot prompt sequence in case of 'dropped doms'
+0002070: UploadDOMs.py - Timeout for gunzip step is too short
+0002079: domapptest.py - Fix maxint warning under RHEL4
+0002081: domapptest.py - MessageSizePulserTest fails on pcts-hub02
+0002087: domapptest.py - Futurewarnings on pcts-hub02 (RHEL4)
+==============================================================
+
+V00-02-01 11-13-07 John Jacobsen john@mail.npxdesigns.com
+Issues:
+0001903: Make MB upload procedure bulletproof
+0001914: domapptest.py - IceTop charge stamps - exercise all 3 channels in 'auto' mode
+0001813: DOMApp - charge histogramming needed
+0001845: Wait for DOMAPP READY after starting domapp
+0001755: domapptest.py did not stop on Thorsten's test hub at LBNL
+==============================================================
+
 V00-02-00 8-20-07 John Jacobsen john@mail.npxdesigns.com
 
 Several improvements, some major, with the addition of several new tests
@@ -20,6 +38,8 @@ Issues:
 0001673: domapptest.py - Add timestamps to output
 0001672: domapptest.py - test frequency of new 'fast' monitoring records
 0001647: DOMPrep.py fails on RHEL4 hub when built on PCTS; fails on PCTS when built on spts64-build64
+0001755: domapptest.py did not stop on Thorsten's test hub at LBNL
+0001633: DOMPrep.py fails on RHEL4 domhub
 0001623: Add test which interleaves echo messages and comms resets
 0001511: DOMPrep.py - tolerate failures to open dev file
 ==============================================================
