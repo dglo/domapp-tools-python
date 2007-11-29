@@ -4,6 +4,7 @@ Issues:
 0002070: UploadDOMs.py - Timeout for gunzip step is too short
 0002079: domapptest.py - Fix maxint warning under RHEL4
 0002081: domapptest.py - MessageSizePulserTest fails on pcts-hub02
+0002087: domapptest.py - Futurewarnings on pcts-hub02 (RHEL4)
 ==============================================================
 
 V00-02-01 11-13-07 John Jacobsen john@mail.npxdesigns.com

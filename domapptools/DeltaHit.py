@@ -12,7 +12,7 @@ class MalformedDeltaCompressedHitBuffer(Exception): pass
 
 class DeltaHit:
     def __init__(self, hitbuf):
-        self.words   = unpack('<2i', hitbuf[0:8])
+        self.words   = unpack('<2I', hitbuf[0:8])
         iscompressed = (self.words[0] & 0x80000000L) >> 31 # Use L constant to suppress maxint warning
         if not iscompressed:
             raise MalformedDeltaCompressedHitBuffer("no compression bit found")
