@@ -19,10 +19,10 @@ class WriteTimeoutException(Exception): pass
 class DomappFileNotFoundException(Exception): pass
 
 class MiniDor:
+    DEFAULT_TIMEOUT = 10000
     def __init__(self, card=0, wire=0, dom='A'):
         self.card = card; self.wire=wire; self.dom=dom
         self.devFileName = os.path.join("/", "dev", "dhc%dw%dd%s" % (self.card, self.wire, self.dom))
-        self.expectTimeout = 5000
         self.blockSize     = 4092
         self.domapp        = None
         
@@ -66,7 +66,7 @@ class MiniDor:
         f.write("reset\n")
         f.close()
 
-    def readTimeout(self, file, timeoutMsec=5000):
+    def readTimeout(self, file, timeoutMsec=DEFAULT_TIMEOUT):
         "Read one message from dev file"
         t = MiniTimer(timeoutMsec)
         while not t.expired():
@@ -79,7 +79,7 @@ class MiniDor:
             except Exception: raise
         raise ExpectStringNotFoundException("Data from DOM not arrive in %d msec:\n" % timeoutMsec)
 
-    def readExpect(self, file, expectStr, timeoutMsec=5000):
+    def readExpect(self, file, expectStr, timeoutMsec=DEFAULT_TIMEOUT):
         "Read from dev file until expected string arrives - throw exception if it doesn't"
         contents = ""
         t = MiniTimer(timeoutMsec)
@@ -99,7 +99,7 @@ class MiniDor:
                                             % (expectStr, timeoutMsec,
                                                sub('\r',' ', sub('\n', ' ', contents))))
     
-    def writeTimeout(self, fd, msg, timeoutMsec):
+    def writeTimeout(self, fd, msg, timeoutMsec=DEFAULT_TIMEOUT):
         nb0   = len(msg)
         t = MiniTimer(timeoutMsec)
         while not t.expired():
@@ -113,7 +113,7 @@ class MiniDor:
             except Exception: raise
         raise WriteTimeoutException("Failed to write %d bytes to fd %d" % (nb0, fd))
 
-    def echo(self, send, timeout):
+    def echo(self, send, timeout=DEFAULT_TIMEOUT):
         "Send text, read it back, compare it, timeout msec"
         try:
             self.writeTimeout(self.fd, send, timeout)
@@ -124,12 +124,12 @@ class MiniDor:
             return (False, exc_string())
         return (True, "")
 
-    def se1(self, send, recv, timeout):
+    def se1(self, send, recv, timeout=DEFAULT_TIMEOUT):
         "Send and expect, but use exception handling"
         self.writeTimeout(self.fd, send, timeout)
         return self.readExpect(self.fd, recv, timeout)
         
-    def se(self, send, recv, timeout):
+    def se(self, send, recv, timeout=DEFAULT_TIMEOUT):
         "Send text, wait for recv text in timeout msec"
         try:
             self.writeTimeout(self.fd, send, timeout)
@@ -140,23 +140,23 @@ class MiniDor:
 
     # Versions which return both success and error message
     fpgaReloadSleepTime = 8
-    def isInIceboot2(self):         return self.se("\r\n", ">", 5000)
-    def isInConfigboot2(self):      return self.se("\r\n", "#", 5000)
-    def configbootToIceboot2(self): return self.se("r",    ">", 5000)
-    def icebootToConfigboot2(self): return self.se("boot-serial reboot\r\n", "#", 5000)
-    def icebootToDomapp2(self):     return self.se("domapp\r\n", "DOMAPP READY", 5000)
+    def isInIceboot2(self):         return self.se("\r\n", ">")
+    def isInConfigboot2(self):      return self.se("\r\n", "#")
+    def configbootToIceboot2(self): return self.se("r",    ">")
+    def icebootToConfigboot2(self): return self.se("boot-serial reboot\r\n", "#")
+    def icebootToDomapp2(self):     return self.se("domapp\r\n", "DOMAPP READY")
     def icebootToEcho2(self):
-        ok, txt = self.se("echo-mode\r\n", "echo-mode", 5000)
+        ok, txt = self.se("echo-mode\r\n", "echo-mode")
         if ok: time.sleep(MiniDor.fpgaReloadSleepTime)
         return (ok, txt)
-    def echoRandomPacket2(self, maxlen, timeout):
+    def echoRandomPacket2(self, maxlen, timeout=DEFAULT_TIMEOUT):
         p = ""
         l = randint(1,maxlen)
         for i in xrange(0,l):
             p += pack("B", randint(0,255))
         return self.echo(p, timeout) # Give extra time in case of crappy comms
     
-    def sendFile(self, fname, timeout):
+    def sendFile(self, fname, timeout=DEFAULT_TIMEOUT):
         "Dump file 'fname' to DOM"
         f = open(fname)
         while(True):
@@ -178,18 +178,18 @@ class MiniDor:
         size = os.stat(domappFile)[ST_SIZE]
         if size <= 0: return (False, "size error: %s %d bytes" % (domappFile, size))
         # Load domapp FPGA
-        ok, txt = self.se("s\" domapp.sbi.gz\" find if fpga-gz endif\r\n", ">", 5000)
+        ok, txt = self.se("s\" domapp.sbi.gz\" find if fpga-gz endif\r\n", ">")
         if not ok: return (False, "%s\nFPGA reload failed!" % txt)
         # Prepare iceboot to receive file
-        ok, txt = self.se("%d read-bin\r\n" % size, "read-bin", 5000)
+        ok, txt = self.se("%d read-bin\r\n" % size, "read-bin")
         if not ok: return (False, "%s\nread-bin failed!" % txt)
         # Send file data
-        if not self.sendFile(domappFile, 5000): return (False, "send file failed!")
+        if not self.sendFile(domappFile): return (False, "send file failed!")
         # See if iceboot is still ok
-        ok, txt = self.se("\r\n", ">", 5000)
+        ok, txt = self.se("\r\n", ">")
         if not ok: return (False, "%s\ndidn't get iceboot prompt!" % txt)
         # Exec the new domapp program
-        ok, txt = self.se("gunzip exec\r\n", "READY", 5000)
+        ok, txt = self.se("gunzip exec\r\n", "READY")
         if not ok: return (False, "%s\ndidn't get READY!" % txt)
         return (True, "")
     
