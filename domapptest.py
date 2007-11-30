@@ -357,13 +357,16 @@ class DOMAppHVTest(DOMAppTest):
     nominalHVVolts = 900 # Is this the best value?
     def setHV(self, domapp, hv):
         HV_TOLERANCE = 20   # HV must be correct to 10 Volts (20 units)
+        HV_TIMEOUT   = 10
         domapp.enableHV()
         domapp.setHV(hv*2)
-        time.sleep(2)
-        hvadc, hvdac = domapp.queryHV()
-        self.debugMsgs.append("HV: read %d V (ADC) %d V (DAC)" % (hvadc/2,hvdac/2))
-        if abs(hvadc-hv*2) > HV_TOLERANCE:
-            raise Exception("HV deviates too much from set value!")
+        t = MiniTimer(HV_TIMEOUT * 1000)
+        while not t.expired():
+            time.sleep(1)
+            hvadc, hvdac = domapp.queryHV()
+            self.debugMsgs.append("HV: read %d V (ADC) %d V (DAC)" % (hvadc/2,hvdac/2))
+            if abs(hvadc-hv*2) <= HV_TOLERANCE: return
+        raise Exception("HV deviates too much from set value!")
         
     def turnOffHV(self, domapp):
         domapp.setHV(0)
