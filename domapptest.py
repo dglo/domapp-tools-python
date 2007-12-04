@@ -824,7 +824,7 @@ class SPEScalerNotZeroTest(DOMAppHVTest):
             domapp.setPulser(mode=BEACON, rate=4)
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)
-            domapp.setLC(mode=1, type=2, source=0, span=1)
+            domapp.setLC(mode=0)
             domapp.startRun()            
             domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
             t = MiniTimer(self.runLength*1000)
