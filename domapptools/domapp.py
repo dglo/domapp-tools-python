@@ -107,9 +107,14 @@ DRIVER_ROOT = "/proc/driver/domhub"
 
 _atwdMask = { 1 : { 0 : 0, 16 : 9, 32 : 1, 64 : 5, 128 : 13 },
               2 : { 0 : 0, 16 : 11, 32 : 3, 64 : 7, 128 : 15 } }
-   
-class MessagingException(Exception):
 
+class InsufficientMessageDataPortion(Exception):
+    def __init__(self, buf, expected):
+        self.buf = buf; self.buf = buf; self.expected = expected
+    def __str__(self):
+        return "(return buffer was only %d bytes; expected %d bytes)" % (len(self.buf), self.expected)
+        
+class MessagingException(Exception):
     def __init__(self, msg):
         self.msg = msg
 
@@ -205,7 +210,10 @@ class DOMApp:
         """
         Get the DOM HV setting as a tuple (x,y,z)
         """
-        return unpack(">2H", self.sendMsg(DOM_SLOW_CONTROL, DSC_QUERY_PMT_HV))
+        buf = self.sendMsg(DOM_SLOW_CONTROL, DSC_QUERY_PMT_HV)
+        if len(buf) < 4:
+            raise InsufficientMessageDataPortion(buf, 4)
+        return unpack(">2H", buf)
 
     def getMessageStats(self):
         """
