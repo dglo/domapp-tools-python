@@ -534,8 +534,8 @@ class FlasherTest(DOMAppTest):
         t = MiniTimer(self.runLength*1000)
         gotData = False
         nhits = 0
-        ok = True
-        while ok and not t.expired():
+        hitOk = True
+        while hitOk and not t.expired():
             try:
                 hitdata = domapp.getWaveformData()
             except Exception, e:
@@ -553,34 +553,49 @@ class FlasherTest(DOMAppTest):
                                   % hit.trigSource)
                         self.appendMoni(domapp)
                         self.debugMsgs.append(hit)
-                        ok = False
+                        hitOk = False
                         break
                     if not hit.fbRunInProgress:
                         self.fail("Hit indicates flasher run is not in progress!!!")
                         self.appendMoni(domapp)
                         self.debugMsgs.append(hit)
-                        ok = False
+                        hitOk = False
                         break
                     if len(hit.atwd[3]) != 128:
                         self.fail("Insufficient channels (%d) in ATWD3"
                                   % len(hit.atwd[3]))
                         self.appendMoni(domapp)
                         self.debugMsgs.append(hit)
-                        ok = False
+                        hitOk = False
                         break
-                    min = None
-                    max = None
-                    for s in hit.atwd[3]:
+                    min    = None
+                    max    = None
+                    top    = 800
+                    bot    = 500
+                    minTOT = 5
+                    start  = None
+                    end    = None
+                    for i in range(0, len(hit.atwd[3])):
+                        s = hit.atwd[3][i]
+                        if start is None:
+                            if s < bot: start = i
+                        else:
+                            if s > top: end = i
                         if min is None or s < min: min = s
                         if max is None or s > max: max = s
-                    top = 800
-                    bot = 500
-                    if max < top or min > bot:
-                        self.fail("Current min(%d), max(%d): out of range (%d, %d)!"
-                                  % (min, max, bot, top))
+                    badLEDpulse = True
+                    if start is None:
+                        self.fail("Pulse never went below %d" % bot)
+                    elif end is None:
+                        self.fail("Pulse never returned above %d" % top)
+                    elif end-start < minTOT:
+                        self.fail("Start and end range of pulse (%d, %d) < %d" % (start, end, minTOT))
+                    else:
+                        badLEDpulse = False
+                    if badLEDpulse:
                         self.appendMoni(domapp)
                         self.debugMsgs.append(hit)
-                        ok = False
+                        hitOk = False
                         break
                     
         try:
