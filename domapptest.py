@@ -23,6 +23,7 @@ import optparse
 class WriteTimeoutException(Exception):             pass
 class RepeatedTestChangesStateException(Exception): pass
 class UnsupportedTestException(Exception):          pass
+class TestNotHVTestException(Exception):            pass
 
 class DOMTest:
     STATE_ICEBOOT    = "ib"
@@ -352,12 +353,15 @@ class DOMAppTest(DOMTest):
                                                                   bins, prevClock, clock))
         return (clock, bins)
 
-class DOMAppHVTest(DOMAppTest):
-    "Subclass of DOMTest with an HV-setting method"
-    nominalHVVolts = 900 # Is this the best value?
-    def setHV(self, domapp, hv):
+    def _setHV(self, domapp, hv):
+        """
+        Only DOMAppHVTests can turn on HV, but all tests can turn it off
+        """
+        if not isinstance(self, DOMAppHVTest) and hv > 0:
+            raise TestNotHVTestException("Test %s cannot set voltage other than 0" % \
+                                         self.__class__.__name__)
         HV_TOLERANCE = 20   # HV must be correct to 10 Volts (20 units)
-        HV_TIMEOUT   = 10
+        HV_TIMEOUT   = 30
         domapp.enableHV()
         domapp.setHV(hv*2)
         t = MiniTimer(HV_TIMEOUT * 1000)
@@ -367,11 +371,23 @@ class DOMAppHVTest(DOMAppTest):
             self.debugMsgs.append("HV: read %d V (ADC) %d V (DAC)" % (hvadc/2,hvdac/2))
             if abs(hvadc-hv*2) <= HV_TOLERANCE: return
         raise Exception("HV deviates too much from set value!")
-        
+    
     def turnOffHV(self, domapp):
-        domapp.setHV(0)
+        """
+        Every test must be able to turn off HV, but only DOMAppHVTests can turn it on
+        """
+        self._setHV(domapp, 0)
         domapp.disableHV()
 
+class DOMAppHVTest(DOMAppTest):
+    "Subclass of DOMTest with an HV-setting method"
+    nominalHVVolts = 900 # Is this the best value?
+    def setHV(self, domapp, hv):
+        """
+        Only DOMAppHVTests can turn on HV, but all tests can turn it off
+        """
+        self._setHV(domapp, hv)
+        
 class ChargeStampHistoTest(DOMAppHVTest):
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
@@ -502,12 +518,16 @@ class FlasherTest(DOMAppTest):
             setDefaultDACs(domapp)
             setDAC(domapp, DAC_FLASHER_REF, 450)
             domapp.collectPedestals(100, 100, 200)
+
+            # HACK: set trigger mode to 2 first, so that setPulser can succeed
+            domapp.setTriggerMode(2)
             domapp.setPulser(mode=BEACON) # Turn pulser off
             domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
             domapp.setTriggerMode(3)
             domapp.setCompressionMode(0)
             domapp.setDataFormat(0)
             domapp.selectMUX(3)
+            self.turnOffHV(domapp)
             domapp.startFBRun(127, 50, 0, 1, 100)
             domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
         except Exception, e:
