@@ -518,12 +518,8 @@ class FlasherTest(DOMAppTest):
             setDefaultDACs(domapp)
             setDAC(domapp, DAC_FLASHER_REF, 450)
             domapp.collectPedestals(100, 100, 200)
-
-            # HACK: set trigger mode to 2 first, so that setPulser can succeed
-            domapp.setTriggerMode(2)
-            domapp.setPulser(mode=BEACON) # Turn pulser off
-            domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
             domapp.setTriggerMode(3)
+            domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
             domapp.setCompressionMode(0)
             domapp.setDataFormat(0)
             domapp.selectMUX(3)
@@ -1633,6 +1629,11 @@ def main():
                  dest="repeatCount",  help="Set # of times to run a test, "   + \
                                             "e.g. '-n SNTest 5' (repeatable) " + \
                                             "(non-state-changing tests only!)")
+
+    p.add_option("-x", "--exclude-dom",
+                 action="append",     type="string",    nargs=1,
+                 dest="excludeDoms",  help="Exclude DOM (e.g. 00A; repeatable)")
+    
     p.add_option("-a", "--upload-app",
                  action="store",      type="string",
                  dest="uploadApp",    help="Upload ARM application to execute " +\
@@ -1646,6 +1647,7 @@ def main():
                    doFlasherTests   = None,
                    setDuration      = None,
                    repeatCount      = None,
+                   excludeDoms      = None,
                    doOnly           = False,
                    domappOnly       = False,
                    uploadApp        = None,
@@ -1653,7 +1655,6 @@ def main():
     opt, args = p.parse_args()
 
     startState = DOMTest.STATE_ICEBOOT # FIXME: what if it's not?
-
 
     ListOfTests = [IcebootToConfigboot,
                    CheckConfigboot,
@@ -1690,7 +1691,7 @@ def main():
     try:
         dor = Driver()
         dor.enable_blocking(0)
-        domDict = dor.get_active_doms()
+        domDict = dor.get_active_doms(opt.excludeDoms)
     except Exception, e:
         print "No driver present? ('%s')" % e
         raise SystemExit
