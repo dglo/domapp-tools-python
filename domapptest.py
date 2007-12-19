@@ -835,6 +835,8 @@ class MessageSizePulserTest(DOMAppTest):
                 self.appendMoni(exc_string())
             self.appendMoni(domapp)
 
+        domapp.setPulser(mode=BEACON) # Turn pulser off 
+
         if maxMsgSize < 3000: self.fail("Maximum message size (%d bytes) too small!"
                                          % maxMsgSize)
 
