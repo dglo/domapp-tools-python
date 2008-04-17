@@ -1,3 +1,7 @@
+Next:
+0001529: Some DOMs have bad ATWD chips and we need to be able to configure pDAQ so that only one chip gets read out
+==============================================================
+
 V00-02-02 11-29-07 John Jacobsen john@mail.npxdesigns.com
 Issues:
 0002071: UploadDOMs.py - Retry softboot/open/get iceboot prompt sequence in case of 'dropped doms'
