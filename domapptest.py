@@ -1441,6 +1441,177 @@ class SNTest(DOMAppTest):
             self.fail("END RUN FAILED: %s" % exc_string())
             self.appendMoni(domapp)
 
+
+class TimedDOMAppTest(DOMAppTest):
+    """
+    This class is an attempt to abstract out some common behaviors in several of the tests.
+
+    !!!!!!!!!
+    TRY TO USE THIS CLASS FOR NEW TESTS, AND BACK-PORT THE OLD ONES AS TIME ALLOWS!
+    !!!!!!!!
+    """
+    
+    def resetDomapp(self, domapp):
+        """
+        Reset method (generic)
+        """
+        domapp.setMonitoringIntervals(0, 0, 0)
+        domapp.resetMonitorBuffer()
+        
+    def prepDomapp(self, domapp):
+        """
+        Generic preparation method for domapp test - override me
+        """
+        setDefaultDACs(domapp)
+
+    def startDomapp(self, domapp):
+        """
+        Generic start method
+        """
+        domapp.startRun()
+        domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
+        
+    def cleanup(self, domapp):
+        """
+        Generic cleanup method for domapp test - override me
+        """
+        domapp.endRun()
+        self.appendMoni(domapp)
+        
+    def interval(self, domapp):
+        """
+        Do every second (e.g. poll domapp)
+        """
+        
+    def run(self, fd):
+        """
+        Generic run method - shouldn't have to override me
+        """
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            self.resetDomapp(domapp)
+            self.prepDomapp(domapp)
+            self.startDomapp(domapp)
+        except KeyboardInterrupt:
+            raise SystemExit
+        except Exception, e:
+            self.fail(exc_string())
+            self.appendMoni(domapp)
+            return
+
+        t = MiniTimer(self.runLength*1000)
+        failstr = None
+        while not t.expired():
+            try:
+                self.interval(domapp)
+                time.sleep(1)
+            except KeyboardInterrupt:
+                raise SystemExit
+            except Exception, e:
+                self.fail(exc_string())
+                self.appendMoni(domapp)
+                break
+
+        try:
+            self.cleanup(domapp)
+        except KeyboardInterrupt:
+            raise SystemExit
+        except Exception, e:
+            self.fail(exc_string())
+            self.appendMoni(domapp)
+
+        self.finalCheck()
+
+    def finalCheck(self):
+        """
+        Final checks on data go here
+        """
+        
+class ATWDSelectTest(TimedDOMAppTest):
+    """
+    Use the more abstract TimedDOMAppTest to make sure that the ATWD select function works
+    """
+    def prepDomapp(self, domapp):
+        self.hadData  = False
+        self.hadAtwdA = False
+        self.hadAtwdB = False
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
+        setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
+        domapp.setTriggerMode(2)
+        domapp.setPulser(mode=FE_PULSER, rate=8000)
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.setLC(mode=0) # Make sure no LC is required
+        
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            self.hadData = True
+            hitBuf = DeltaHitBuf(hitdata)
+            for hit in hitBuf.next():
+                if hit.atwd_chip == 0:
+                    self.hadAtwdA = True
+                elif hit.atwd_chip == 1:
+                    self.hadAtwdB = True
+
+    def cleanupDomapp(self, domapp):
+        domapp.selectAtwd(2)
+        TimedDOMAppTest.cleanup(self)
+
+    def finalCheck(self):
+        if not self.hadData:
+            self.fail("Got no waveform data!")
+        
+class ATWDAOnlyTest(ATWDSelectTest):
+    """
+    Require that selecting only ATWD A works
+    """
+    def prepDomapp(self, domapp):
+        domapp.selectAtwd(0)
+        ATWDSelectTest.prepDomapp(self, domapp)
+                                                   
+    def finalCheck(self):
+        if not self.hadAtwdA:
+            self.fail("Got no ATWD A data!")
+        if self.hadAtwdB:
+            self.fail("Got ATWD B data - shouldn't have!")
+        ATWDSelectTest.finalCheck(self)
+
+class ATWDBOnlyTest(ATWDSelectTest):
+    """
+    Require that selecting only ATWD B works
+    """
+    def prepDomapp(self, domapp):
+        domapp.selectAtwd(1)
+        ATWDSelectTest.prepDomapp(self, domapp)
+
+    def finalCheck(self):
+        if self.hadAtwdA:
+            self.fail("Got ATWD A data - shouldn't have!")
+        if not self.hadAtwdB:
+            self.fail("Got no ATWD B data!")
+        ATWDSelectTest.finalCheck(self)
+            
+class ATWDBothTest(ATWDSelectTest):
+    """
+    Require that both ATWD chips work
+    """
+
+    def prepDomapp(self, domapp):
+        domapp.selectAtwd(2)
+        ATWDSelectTest.prepDomapp(self, domapp)
+        
+    def finalCheck(self):
+        if not self.hadAtwdA:
+            self.fail("Got no ATWD A data!")
+        if not self.hadAtwdB:
+            self.fail("Got no ATWD B data!")
+        ATWDSelectTest.finalCheck(self)
+
+
+################################### HIGH-LEVEL TESTING LOGIC ###############################
+            
 class TestNotFoundException(Exception): pass
 
 class TestingSet:
@@ -1585,20 +1756,19 @@ class TestingSet:
         c, w, d = self.domDict[domid]
         try:
             self.doAllTests(domid, c,w,d)
-        except KeyboardInterrupt, k:
-            return
+        except KeyboardInterrupt:
+            raise SystemExit
         except Exception, e:
             print "Test sequence aborted: %s" % exc_string()        
         
     def go(self): 
         for dom in self.domDict:
             self.threads[dom] = threading.Thread(target=self.runThread, args=(dom, ))
+            self.threads[dom].setDaemon(True)
             self.threads[dom].start()
         for dom in self.domDict:
             try:
                 self.threads[dom].join()
-            except KeyboardException:
-                raise SystemExit
             except Exception, e:
                 print exc_string()
                 raise SystemExit
@@ -1683,9 +1853,18 @@ def main():
 
     # Domapp tests have to be kept together for the
     # -o option to work correctly (FIXME)
-    ListOfTests.extend([GetDomappRelease, DOMIDTest, SNTest, DeltaCompressionBeaconTest,
-                        PedestalMonitoringTest, ScalerDeadtimePulserTest, IdleCounterTest,
-                        SLCOnlyPulserTest, MessageSizePulserTest])
+    ListOfTests.extend([ATWDAOnlyTest,
+                        ATWDBOnlyTest,
+                        ATWDBothTest,
+                        DeltaCompressionBeaconTest,
+                        DOMIDTest,
+                        IdleCounterTest,
+                        GetDomappRelease,
+                        MessageSizePulserTest,
+                        PedestalMonitoringTest,
+                        ScalerDeadtimePulserTest,
+                        SNTest,
+                        SLCOnlyPulserTest])
 
     if opt.doFlasherTests == "A":
         ListOfTests.extend([FlasherATest])
