@@ -1526,7 +1526,42 @@ class TimedDOMAppTest(DOMAppTest):
         """
         Final checks on data go here
         """
+
+class MinimumBiasTest(TimedDOMAppTest):
+    """
+    Test new minimum-bias (no LC required) functionality - require LC, configure minimum bias,
+    expect some hits to show up with bit 30 set in the first header word.
+    """
+    def prepDomapp(self, domapp):
+        self.gotMinbias = False
+        self.totalHits  = 0
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
+        domapp.setTriggerMode(2)
+        domapp.setPulser(mode=FE_PULSER, rate=8000)
+        domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 550)
+        domapp.setLC(mode=2, type=2, source=0, span=1)
+        domapp.enableMinbias()
+
+    def cleanupDomapp(self, domapp):
+        domapp.disableMinbias()
         
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            hitBuf = DeltaHitBuf(hitdata)
+            for hit in hitBuf.next():
+                self.totalHits += 1
+                if hit.isMinbias: self.gotMinbias = True
+
+    def finalCheck(self):
+        if self.totalHits < 1:
+            self.fail("Got no waveform data!!!")
+        if not self.gotMinbias:
+            self.fail("Got no minimum bias data (%d total hits)!!!" % self.totalHits)
+            
 class ATWDSelectTest(TimedDOMAppTest):
     """
     Use the more abstract TimedDOMAppTest to make sure that the ATWD select function works
@@ -1856,6 +1891,7 @@ def main():
     ListOfTests.extend([ATWDAOnlyTest,
                         ATWDBOnlyTest,
                         ATWDBothTest,
+                        MinimumBiasTest,
                         DeltaCompressionBeaconTest,
                         DOMIDTest,
                         IdleCounterTest,

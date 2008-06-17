@@ -16,9 +16,10 @@ class DeltaHit:
         iscompressed = (self.words[0] & 0x80000000L) >> 31 # Use L constant to suppress maxint warning
         if not iscompressed:
             raise MalformedDeltaCompressedHitBuffer("no compression bit found")
-        self.hitsize = self.words[0] & 0x7FF
-        self.natwdch = ((self.words[0] & 0x3000) >> 12)+1
-        self.trigger = (self.words[0] & 0x7ffe0000L) >> 18
+        self.isMinbias  = (self.words[0] & 0x40000000L) >> 30
+        self.hitsize    = self.words[0] & 0x7FF
+        self.natwdch    = ((self.words[0] & 0x3000) >> 12)+1
+        self.trigger    = (self.words[0] & 0x7ffe0000L) >> 18
         self.atwd_avail = ((self.words[0] & 0x4000) != 0)
         self.atwd_chip  = (self.words[0] & 0x0800) >> 11
         self.fadc_avail = ((self.words[0] & 0x8000) != 0)

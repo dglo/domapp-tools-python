@@ -52,6 +52,7 @@ DSC_GET_LC_CABLE_LEN            = 58
 DSC_ENABLE_SN                   = 59
 DSC_DISABLE_SN                  = 60
 DSC_SET_CHARGE_STAMP_TYPE       = 61
+DSC_SELECT_MINBIAS              = 62
 
 # DATA_ACCESS message
 DATA_ACC_GET_DATA               = 11
@@ -324,6 +325,11 @@ class DOMApp:
                      data=pack(">BBB",
                                iType, iChannelMode, iChannelByte)
                      )
+
+    def enableMinbias(self):
+        self.sendMsg(DOM_SLOW_CONTROL, DSC_SELECT_MINBIAS, data=pack(">B", 1))
+    def disableMinbias(self):
+        self.sendMsg(DOM_SLOW_CONTROL, DSC_SELECT_MINBIAS, data=pack(">B", 0))
         
     def startRun(self):
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_BEGIN_RUN)
