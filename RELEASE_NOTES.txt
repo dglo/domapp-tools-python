@@ -1,4 +1,5 @@
 Next:
+0002572: Implement icetop minbias hits
 0001529: Some DOMs have bad ATWD chips and we need to be able to configure pDAQ so that only one chip gets read out
 ==============================================================
 
