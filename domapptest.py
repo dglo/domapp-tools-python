@@ -23,6 +23,7 @@ import optparse
 class WriteTimeoutException(Exception):             pass
 class RepeatedTestChangesStateException(Exception): pass
 class UnsupportedTestException(Exception):          pass
+class TestNotHVTestException(Exception):            pass
 
 class DOMTest:
     STATE_ICEBOOT    = "ib"
@@ -352,23 +353,41 @@ class DOMAppTest(DOMTest):
                                                                   bins, prevClock, clock))
         return (clock, bins)
 
+    def _setHV(self, domapp, hv):
+        """
+        Only DOMAppHVTests can turn on HV, but all tests can turn it off
+        """
+        if not isinstance(self, DOMAppHVTest) and hv > 0:
+            raise TestNotHVTestException("Test %s cannot set voltage other than 0" % \
+                                         self.__class__.__name__)
+        HV_TOLERANCE = 20   # HV must be correct to 10 Volts (20 units)
+        HV_TIMEOUT   = 30
+        domapp.enableHV()
+        domapp.setHV(hv*2)
+        t = MiniTimer(HV_TIMEOUT * 1000)
+        while not t.expired():
+            time.sleep(1)
+            hvadc, hvdac = domapp.queryHV()
+            self.debugMsgs.append("HV: read %d V (ADC) %d V (DAC)" % (hvadc/2,hvdac/2))
+            if abs(hvadc-hv*2) <= HV_TOLERANCE: return
+        raise Exception("HV deviates too much from set value!")
+    
+    def turnOffHV(self, domapp):
+        """
+        Every test must be able to turn off HV, but only DOMAppHVTests can turn it on
+        """
+        self._setHV(domapp, 0)
+        domapp.disableHV()
+
 class DOMAppHVTest(DOMAppTest):
     "Subclass of DOMTest with an HV-setting method"
     nominalHVVolts = 900 # Is this the best value?
     def setHV(self, domapp, hv):
-        HV_TOLERANCE = 20   # HV must be correct to 10 Volts (20 units)
-        domapp.enableHV()
-        domapp.setHV(hv*2)
-        time.sleep(2)
-        hvadc, hvdac = domapp.queryHV()
-        self.debugMsgs.append("HV: read %d V (ADC) %d V (DAC)" % (hvadc/2,hvdac/2))
-        if abs(hvadc-hv*2) > HV_TOLERANCE:
-            raise Exception("HV deviates too much from set value!")
+        """
+        Only DOMAppHVTests can turn on HV, but all tests can turn it off
+        """
+        self._setHV(domapp, hv)
         
-    def turnOffHV(self, domapp):
-        domapp.setHV(0)
-        domapp.disableHV()
-
 class ChargeStampHistoTest(DOMAppHVTest):
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
@@ -499,12 +518,12 @@ class FlasherTest(DOMAppTest):
             setDefaultDACs(domapp)
             setDAC(domapp, DAC_FLASHER_REF, 450)
             domapp.collectPedestals(100, 100, 200)
-            domapp.setPulser(mode=BEACON) # Turn pulser off
-            domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
             domapp.setTriggerMode(3)
+            domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
             domapp.setCompressionMode(0)
             domapp.setDataFormat(0)
             domapp.selectMUX(3)
+            self.turnOffHV(domapp)
             domapp.startFBRun(127, 50, 0, 1, 100)
             domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
         except Exception, e:
@@ -515,8 +534,8 @@ class FlasherTest(DOMAppTest):
         t = MiniTimer(self.runLength*1000)
         gotData = False
         nhits = 0
-        ok = True
-        while ok and not t.expired():
+        hitOk = True
+        while hitOk and not t.expired():
             try:
                 hitdata = domapp.getWaveformData()
             except Exception, e:
@@ -534,34 +553,49 @@ class FlasherTest(DOMAppTest):
                                   % hit.trigSource)
                         self.appendMoni(domapp)
                         self.debugMsgs.append(hit)
-                        ok = False
+                        hitOk = False
                         break
                     if not hit.fbRunInProgress:
                         self.fail("Hit indicates flasher run is not in progress!!!")
                         self.appendMoni(domapp)
                         self.debugMsgs.append(hit)
-                        ok = False
+                        hitOk = False
                         break
                     if len(hit.atwd[3]) != 128:
                         self.fail("Insufficient channels (%d) in ATWD3"
                                   % len(hit.atwd[3]))
                         self.appendMoni(domapp)
                         self.debugMsgs.append(hit)
-                        ok = False
+                        hitOk = False
                         break
-                    min = None
-                    max = None
-                    for s in hit.atwd[3]:
+                    min    = None
+                    max    = None
+                    top    = 800
+                    bot    = 500
+                    minTOT = 5
+                    start  = None
+                    end    = None
+                    for i in range(0, len(hit.atwd[3])):
+                        s = hit.atwd[3][i]
+                        if start is None:
+                            if s < bot: start = i
+                        else:
+                            if s > top: end = i
                         if min is None or s < min: min = s
                         if max is None or s > max: max = s
-                    top = 800
-                    bot = 500
-                    if max < top or min > bot:
-                        self.fail("Current min(%d), max(%d): out of range (%d, %d)!"
-                                  % (min, max, bot, top))
+                    badLEDpulse = True
+                    if start is None:
+                        self.fail("Pulse never went below %d" % bot)
+                    elif end is None:
+                        self.fail("Pulse never returned above %d" % top)
+                    elif end-start < minTOT:
+                        self.fail("Start and end range of pulse (%d, %d) < %d" % (start, end, minTOT))
+                    else:
+                        badLEDpulse = False
+                    if badLEDpulse:
                         self.appendMoni(domapp)
                         self.debugMsgs.append(hit)
-                        ok = False
+                        hitOk = False
                         break
                     
         try:
@@ -801,6 +835,8 @@ class MessageSizePulserTest(DOMAppTest):
                 self.appendMoni(exc_string())
             self.appendMoni(domapp)
 
+        domapp.setPulser(mode=BEACON) # Turn pulser off 
+
         if maxMsgSize < 3000: self.fail("Maximum message size (%d bytes) too small!"
                                          % maxMsgSize)
 
@@ -821,7 +857,7 @@ class SPEScalerNotZeroTest(DOMAppHVTest):
             domapp.setPulser(mode=BEACON, rate=4)
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)
-            domapp.setLC(mode=1, type=2, source=0, span=1)
+            domapp.setLC(mode=0)
             domapp.startRun()            
             domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
             t = MiniTimer(self.runLength*1000)
@@ -1405,6 +1441,212 @@ class SNTest(DOMAppTest):
             self.fail("END RUN FAILED: %s" % exc_string())
             self.appendMoni(domapp)
 
+
+class TimedDOMAppTest(DOMAppTest):
+    """
+    This class is an attempt to abstract out some common behaviors in several of the tests.
+
+    !!!!!!!!!
+    TRY TO USE THIS CLASS FOR NEW TESTS, AND BACK-PORT THE OLD ONES AS TIME ALLOWS!
+    !!!!!!!!
+    """
+    
+    def resetDomapp(self, domapp):
+        """
+        Reset method (generic)
+        """
+        domapp.setMonitoringIntervals(0, 0, 0)
+        domapp.resetMonitorBuffer()
+        
+    def prepDomapp(self, domapp):
+        """
+        Generic preparation method for domapp test - override me
+        """
+        setDefaultDACs(domapp)
+
+    def startDomapp(self, domapp):
+        """
+        Generic start method
+        """
+        domapp.startRun()
+        domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
+        
+    def cleanup(self, domapp):
+        """
+        Generic cleanup method for domapp test - override me
+        """
+        domapp.endRun()
+        self.appendMoni(domapp)
+        
+    def interval(self, domapp):
+        """
+        Do every second (e.g. poll domapp)
+        """
+        
+    def run(self, fd):
+        """
+        Generic run method - shouldn't have to override me
+        """
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            self.resetDomapp(domapp)
+            self.prepDomapp(domapp)
+            self.startDomapp(domapp)
+        except KeyboardInterrupt:
+            raise SystemExit
+        except Exception, e:
+            self.fail(exc_string())
+            self.appendMoni(domapp)
+            return
+
+        t = MiniTimer(self.runLength*1000)
+        failstr = None
+        while not t.expired():
+            try:
+                self.interval(domapp)
+                time.sleep(1)
+            except KeyboardInterrupt:
+                raise SystemExit
+            except Exception, e:
+                self.fail(exc_string())
+                self.appendMoni(domapp)
+                break
+
+        try:
+            self.cleanup(domapp)
+        except KeyboardInterrupt:
+            raise SystemExit
+        except Exception, e:
+            self.fail(exc_string())
+            self.appendMoni(domapp)
+
+        self.finalCheck()
+
+    def finalCheck(self):
+        """
+        Final checks on data go here
+        """
+
+class MinimumBiasTest(TimedDOMAppTest):
+    """
+    Test new minimum-bias (no LC required) functionality - require LC, configure minimum bias,
+    expect some hits to show up with bit 30 set in the first header word.
+    """
+    def prepDomapp(self, domapp):
+        self.gotMinbias = False
+        self.totalHits  = 0
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
+        domapp.setTriggerMode(2)
+        domapp.setPulser(mode=FE_PULSER, rate=8000)
+        domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 550)
+        domapp.setLC(mode=2, type=2, source=0, span=1)
+        domapp.enableMinbias()
+
+    def cleanupDomapp(self, domapp):
+        domapp.disableMinbias()
+        
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            hitBuf = DeltaHitBuf(hitdata)
+            for hit in hitBuf.next():
+                self.totalHits += 1
+                if hit.isMinbias: self.gotMinbias = True
+
+    def finalCheck(self):
+        if self.totalHits < 1:
+            self.fail("Got no waveform data!!!")
+        if not self.gotMinbias:
+            self.fail("Got no minimum bias data (%d total hits)!!!" % self.totalHits)
+            
+class ATWDSelectTest(TimedDOMAppTest):
+    """
+    Use the more abstract TimedDOMAppTest to make sure that the ATWD select function works
+    """
+    def prepDomapp(self, domapp):
+        self.hadData  = False
+        self.hadAtwdA = False
+        self.hadAtwdB = False
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
+        setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
+        domapp.setTriggerMode(2)
+        domapp.setPulser(mode=FE_PULSER, rate=8000)
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.setLC(mode=0) # Make sure no LC is required
+        
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            self.hadData = True
+            hitBuf = DeltaHitBuf(hitdata)
+            for hit in hitBuf.next():
+                if hit.atwd_chip == 0:
+                    self.hadAtwdA = True
+                elif hit.atwd_chip == 1:
+                    self.hadAtwdB = True
+
+    def cleanupDomapp(self, domapp):
+        domapp.selectAtwd(2)
+        TimedDOMAppTest.cleanup(self)
+
+    def finalCheck(self):
+        if not self.hadData:
+            self.fail("Got no waveform data!")
+        
+class ATWDAOnlyTest(ATWDSelectTest):
+    """
+    Require that selecting only ATWD A works
+    """
+    def prepDomapp(self, domapp):
+        domapp.selectAtwd(0)
+        ATWDSelectTest.prepDomapp(self, domapp)
+                                                   
+    def finalCheck(self):
+        if not self.hadAtwdA:
+            self.fail("Got no ATWD A data!")
+        if self.hadAtwdB:
+            self.fail("Got ATWD B data - shouldn't have!")
+        ATWDSelectTest.finalCheck(self)
+
+class ATWDBOnlyTest(ATWDSelectTest):
+    """
+    Require that selecting only ATWD B works
+    """
+    def prepDomapp(self, domapp):
+        domapp.selectAtwd(1)
+        ATWDSelectTest.prepDomapp(self, domapp)
+
+    def finalCheck(self):
+        if self.hadAtwdA:
+            self.fail("Got ATWD A data - shouldn't have!")
+        if not self.hadAtwdB:
+            self.fail("Got no ATWD B data!")
+        ATWDSelectTest.finalCheck(self)
+            
+class ATWDBothTest(ATWDSelectTest):
+    """
+    Require that both ATWD chips work
+    """
+
+    def prepDomapp(self, domapp):
+        domapp.selectAtwd(2)
+        ATWDSelectTest.prepDomapp(self, domapp)
+        
+    def finalCheck(self):
+        if not self.hadAtwdA:
+            self.fail("Got no ATWD A data!")
+        if not self.hadAtwdB:
+            self.fail("Got no ATWD B data!")
+        ATWDSelectTest.finalCheck(self)
+
+
+################################### HIGH-LEVEL TESTING LOGIC ###############################
+            
 class TestNotFoundException(Exception): pass
 
 class TestingSet:
@@ -1549,20 +1791,19 @@ class TestingSet:
         c, w, d = self.domDict[domid]
         try:
             self.doAllTests(domid, c,w,d)
-        except KeyboardInterrupt, k:
-            return
+        except KeyboardInterrupt:
+            raise SystemExit
         except Exception, e:
             print "Test sequence aborted: %s" % exc_string()        
         
     def go(self): 
         for dom in self.domDict:
             self.threads[dom] = threading.Thread(target=self.runThread, args=(dom, ))
+            self.threads[dom].setDaemon(True)
             self.threads[dom].start()
         for dom in self.domDict:
             try:
                 self.threads[dom].join()
-            except KeyboardException:
-                raise SystemExit
             except Exception, e:
                 print exc_string()
                 raise SystemExit
@@ -1610,6 +1851,11 @@ def main():
                  dest="repeatCount",  help="Set # of times to run a test, "   + \
                                             "e.g. '-n SNTest 5' (repeatable) " + \
                                             "(non-state-changing tests only!)")
+
+    p.add_option("-x", "--exclude-dom",
+                 action="append",     type="string",    nargs=1,
+                 dest="excludeDoms",  help="Exclude DOM (e.g. 00A; repeatable)")
+    
     p.add_option("-a", "--upload-app",
                  action="store",      type="string",
                  dest="uploadApp",    help="Upload ARM application to execute " +\
@@ -1623,6 +1869,7 @@ def main():
                    doFlasherTests   = None,
                    setDuration      = None,
                    repeatCount      = None,
+                   excludeDoms      = None,
                    doOnly           = False,
                    domappOnly       = False,
                    uploadApp        = None,
@@ -1630,7 +1877,6 @@ def main():
     opt, args = p.parse_args()
 
     startState = DOMTest.STATE_ICEBOOT # FIXME: what if it's not?
-
 
     ListOfTests = [IcebootToConfigboot,
                    CheckConfigboot,
@@ -1642,9 +1888,19 @@ def main():
 
     # Domapp tests have to be kept together for the
     # -o option to work correctly (FIXME)
-    ListOfTests.extend([GetDomappRelease, DOMIDTest, SNTest, DeltaCompressionBeaconTest,
-                        PedestalMonitoringTest, ScalerDeadtimePulserTest, IdleCounterTest,
-                        SLCOnlyPulserTest, MessageSizePulserTest])
+    ListOfTests.extend([ATWDAOnlyTest,
+                        ATWDBOnlyTest,
+                        ATWDBothTest,
+                        MinimumBiasTest,
+                        DeltaCompressionBeaconTest,
+                        DOMIDTest,
+                        IdleCounterTest,
+                        GetDomappRelease,
+                        MessageSizePulserTest,
+                        PedestalMonitoringTest,
+                        ScalerDeadtimePulserTest,
+                        SNTest,
+                        SLCOnlyPulserTest])
 
     if opt.doFlasherTests == "A":
         ListOfTests.extend([FlasherATest])
@@ -1667,7 +1923,7 @@ def main():
     try:
         dor = Driver()
         dor.enable_blocking(0)
-        domDict = dor.get_active_doms()
+        domDict = dor.get_active_doms(opt.excludeDoms)
     except Exception, e:
         print "No driver present? ('%s')" % e
         raise SystemExit

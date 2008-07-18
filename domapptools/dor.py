@@ -275,13 +275,21 @@ class Driver:
                             dev.close()
         self.scan()
 
-    def get_active_doms(self):
+    def get_active_doms(self, exclude=None):
         """list all active DOMs"""
         for c in self.cards:
             for p in c.pairs:
                 if p.plugged == 1 and p.powered == 1:
                     for d in ('A', 'B'):
                         domid = self.get_dom_id(c, p, d)
+                        name  = "%d%d%s" % (int(c), int(p), d)
+                        if exclude:
+                            excludeUpper = [x.upper() for x in exclude]
+                            try:
+                                i = excludeUpper.index(name)
+                                continue # If found - skip
+                            except ValueError:
+                                pass     # Not found - good to go
                         if domid is not None:
                             self.doms[domid] = (int(c), int(p), d)
         return self.doms

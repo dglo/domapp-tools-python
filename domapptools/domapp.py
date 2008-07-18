@@ -52,6 +52,7 @@ DSC_GET_LC_CABLE_LEN            = 58
 DSC_ENABLE_SN                   = 59
 DSC_DISABLE_SN                  = 60
 DSC_SET_CHARGE_STAMP_TYPE       = 61
+DSC_SELECT_MINBIAS              = 62
 
 # DATA_ACCESS message
 DATA_ACC_GET_DATA               = 11
@@ -70,6 +71,7 @@ DATA_ACC_GET_SN_DATA            = 28
 DATA_ACC_RESET_MONI_BUF         = 29
 DATA_ACC_MONI_AVAIL             = 30
 DATA_ACC_HISTO_CHARGE_STAMPS    = 34
+DATA_ACC_SELECT_ATWD            = 35
 
 # EXPERIMENT_CONTROL messages subtypes
 EXPCONTROL_BEGIN_RUN                = 12
@@ -107,9 +109,14 @@ DRIVER_ROOT = "/proc/driver/domhub"
 
 _atwdMask = { 1 : { 0 : 0, 16 : 9, 32 : 1, 64 : 5, 128 : 13 },
               2 : { 0 : 0, 16 : 11, 32 : 3, 64 : 7, 128 : 15 } }
-   
-class MessagingException(Exception):
 
+class InsufficientMessageDataPortion(Exception):
+    def __init__(self, buf, expected):
+        self.buf = buf; self.buf = buf; self.expected = expected
+    def __str__(self):
+        return "(return buffer was only %d bytes; expected %d bytes)" % (len(self.buf), self.expected)
+        
+class MessagingException(Exception):
     def __init__(self, msg):
         self.msg = msg
 
@@ -205,7 +212,10 @@ class DOMApp:
         """
         Get the DOM HV setting as a tuple (x,y,z)
         """
-        return unpack(">2H", self.sendMsg(DOM_SLOW_CONTROL, DSC_QUERY_PMT_HV))
+        buf = self.sendMsg(DOM_SLOW_CONTROL, DSC_QUERY_PMT_HV)
+        if len(buf) < 4:
+            raise InsufficientMessageDataPortion(buf, 4)
+        return unpack(">2H", buf)
 
     def getMessageStats(self):
         """
@@ -230,7 +240,17 @@ class DOMApp:
         mode = 1: compressed data (delta compression)
         """
         self.sendMsg(DATA_ACCESS, DATA_ACC_SET_COMP_MODE, data=pack('b', mode))
+
+    def selectAtwd(self, mode):
+        """
+        Set compression mode
+        mode = 0: ATWD A
+        mode = 1: ATWD B
+        mode = 2: both
+        """
+        self.sendMsg(DATA_ACCESS, DATA_ACC_SELECT_ATWD, data=pack('b', mode))
         
+
     def setChargeStampHistograms(self, interval=0, prescale=1):
         """
         Set up charge stamp histogramming
@@ -305,6 +325,11 @@ class DOMApp:
                      data=pack(">BBB",
                                iType, iChannelMode, iChannelByte)
                      )
+
+    def enableMinbias(self):
+        self.sendMsg(DOM_SLOW_CONTROL, DSC_SELECT_MINBIAS, data=pack(">B", 1))
+    def disableMinbias(self):
+        self.sendMsg(DOM_SLOW_CONTROL, DSC_SELECT_MINBIAS, data=pack(">B", 0))
         
     def startRun(self):
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_BEGIN_RUN)
