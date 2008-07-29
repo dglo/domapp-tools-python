@@ -1068,6 +1068,7 @@ class SLCOnlyTest(DOMAppTest):
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)            
             domapp.setLC(mode=5, type=1, source=0, span=1)
+            domapp.disableMinbias() # We explicitly do not want minbias set or waveforms will creep in!
             domapp.startRun()
             domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
 
