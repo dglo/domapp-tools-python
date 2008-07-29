@@ -1082,7 +1082,7 @@ class SLCOnlyTest(DOMAppTest):
                         if not hit.is_spe: continue # Skip beacon-only hits
                         nhits += 1
                         if (not hit.is_beacon) and hit.hitsize > 12:
-                            self.fail("After %d hits, SLC-only hit buffer contains waveforms (%d bytes)!"
+                            self.fail("After %d hits, SLC-only hit buffer contains waveforms (%d bytes)" \
                                       % (nhits, hit.hitsize))
                             self.debugMsgs.append(str(hit))
                             broken = True
@@ -1735,7 +1735,7 @@ class TestingSet:
             doneDict[nextTest] += 1
             yield nextTest
 
-    def doAllTests(self, domid, c, w, d):
+    def doAllTests(self, domid, c, w, d, doQuiet):
         startState = DOMTest.STATE_ICEBOOT
         testObjList = []
         dor = MiniDor(c, w, d)
@@ -1768,9 +1768,10 @@ class TestingSet:
             self.counterLock.acquire()
             runLenStr = ""
             if test.runLength: runLenStr = "%d sec " % test.runLength
-            print "%s%s%s %s %s->%s %s %s%s: %s %s" % (c,w,d, tstart, test.startState,
-                                                       test.endState, dt, runLenStr,
-                                                       test.name(), test.result, test.summary)
+            if not doQuiet or test.result != "PASS":
+                print "%s%s%s %s %s->%s %s %s%s: %s %s" % (c,w,d, tstart, test.startState,
+                                                           test.endState, dt, runLenStr,
+                                                           test.name(), test.result, test.summary)
             if test.result == "PASS":
                 self.numpassed += 1
             else:
@@ -1787,18 +1788,18 @@ class TestingSet:
             #### UNLOCK
             if sf: return # Quit upon first failure
             
-    def runThread(self, domid):
+    def runThread(self, domid, doQuiet):
         c, w, d = self.domDict[domid]
         try:
-            self.doAllTests(domid, c,w,d)
+            self.doAllTests(domid, c,w,d, doQuiet)
         except KeyboardInterrupt:
             raise SystemExit
         except Exception, e:
             print "Test sequence aborted: %s" % exc_string()        
         
-    def go(self): 
+    def go(self, doQuiet): 
         for dom in self.domDict:
-            self.threads[dom] = threading.Thread(target=self.runThread, args=(dom, ))
+            self.threads[dom] = threading.Thread(target=self.runThread, args=(dom, doQuiet))
             self.threads[dom].setDaemon(True)
             self.threads[dom].start()
         for dom in self.domDict:
@@ -1863,6 +1864,10 @@ def main():
     p.add_option("-y", "--domapp-only",
                  action="store_true",
                  dest="domappOnly",   help="Only do domapp-related tests (including state changes)")
+
+    p.add_option("-q", "--quiet",
+                 action="store_true",
+                 dest="doQuiet",      help="Suppress output for successful tests")
     
     p.set_defaults(stopFail         = False,
                    doHVTests        = False,
@@ -1872,6 +1877,7 @@ def main():
                    excludeDoms      = None,
                    doOnly           = False,
                    domappOnly       = False,
+                   doQuiet          = False,
                    uploadApp        = None,
                    listTests        = False)
     opt, args = p.parse_args()
@@ -1966,11 +1972,12 @@ def main():
         revTxt = getDomappToolsPythonVersion() # Can fail if not an official installation
     except:
         pass
+
+    if not opt.doQuiet:
+        print "domapp-tools-python revision: %s" % revTxt
+        print "dor-driver release: %s" % dor.release
     
-    print "domapp-tools-python revision: %s" % revTxt
-    print "dor-driver release: %s" % dor.release
-    
-    testSet.go()
+    testSet.go(opt.doQuiet)
     print testSet.summary()
     
     raise SystemExit
