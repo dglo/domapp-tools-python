@@ -5,6 +5,7 @@
 # Started: Wed May  9 21:57:21 2007
 from __future__ import generators
 import time, threading, os, sys
+from datetime import datetime
 
 from re import search, sub
 
@@ -1786,20 +1787,23 @@ class TestingSet:
             test.clearDebugTxt()
             self.counterLock.release()
             #### UNLOCK
-            if sf: return # Quit upon first failure
+            if sf: break # Quit upon first failure
+        dor.close()
             
-    def runThread(self, domid, doQuiet):
+    def runThread(self, domid, doQuiet, nCycles):
         c, w, d = self.domDict[domid]
         try:
-            self.doAllTests(domid, c,w,d, doQuiet)
+            for i in range(nCycles):
+                self.doAllTests(domid, c,w,d, doQuiet)
         except KeyboardInterrupt:
             raise SystemExit
         except Exception, e:
             print "Test sequence aborted: %s" % exc_string()        
         
-    def go(self, doQuiet): 
+    def go(self, doQuiet, nCycles):
+        self.tStart = datetime.now()
         for dom in self.domDict:
-            self.threads[dom] = threading.Thread(target=self.runThread, args=(dom, doQuiet))
+            self.threads[dom] = threading.Thread(target=self.runThread, args=(dom, doQuiet, nCycles))
             self.threads[dom].setDaemon(True)
             self.threads[dom].start()
         for dom in self.domDict:
@@ -1811,9 +1815,11 @@ class TestingSet:
         
     def summary(self):
         "show summary of results"
-        return "Passed tests: %d   Failed tests: %d   Total: %d" % (self.numpassed,
-                                                                    self.numfailed,
-                                                                    self.numtests)
+        dt = datetime.now() - self.tStart
+        tElapsed = dt.days*86400 + dt.seconds
+        return "Passed tests: %d   Failed tests: %d   Total: %d (%d seconds)" % (self.numpassed,
+                                                                                 self.numfailed,
+                                                                                 self.numtests, tElapsed)
 
 def getDomappToolsPythonVersion():
     f = open("/usr/local/share/domapp-tools-python-version")
@@ -1868,6 +1874,10 @@ def main():
     p.add_option("-q", "--quiet",
                  action="store_true",
                  dest="doQuiet",      help="Suppress output for successful tests")
+
+    p.add_option("-r", "--repeat-all",
+                 action="store",      type="int",
+                 dest="nCycles",      help="Number of times to repeat entire test cycle (default=1)")
     
     p.set_defaults(stopFail         = False,
                    doHVTests        = False,
@@ -1878,6 +1888,7 @@ def main():
                    doOnly           = False,
                    domappOnly       = False,
                    doQuiet          = False,
+                   nCycles          = 1,
                    uploadApp        = None,
                    listTests        = False)
     opt, args = p.parse_args()
@@ -1977,7 +1988,7 @@ def main():
         print "domapp-tools-python revision: %s" % revTxt
         print "dor-driver release: %s" % dor.release
     
-    testSet.go(opt.doQuiet)
+    testSet.go(opt.doQuiet, opt.nCycles)
     print testSet.summary()
     
     raise SystemExit
