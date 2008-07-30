@@ -80,8 +80,9 @@ class DOMTest:
     def run(self, fd): pass
 
     def fail(self, str):
-        self.result = "FAIL"
-        self.summary = str
+        if self.result != "FAIL":
+            self.result = "FAIL"
+            self.summary = str
         
 class ConfigbootToIceboot(DOMTest):
     """
@@ -1484,6 +1485,7 @@ class TimedDOMAppTest(DOMAppTest):
         """
         Do every second (e.g. poll domapp)
         """
+        return False # Don't end test early
         
     def run(self, fd):
         """
@@ -1505,12 +1507,13 @@ class TimedDOMAppTest(DOMAppTest):
         failstr = None
         while not t.expired():
             try:
-                self.interval(domapp)
+                if self.interval(domapp): break
                 time.sleep(1)
             except KeyboardInterrupt:
                 raise SystemExit
             except Exception, e:
-                self.fail(exc_string())
+                self.debugMsgs.append(exc_string())
+                self.fail(exc_string()) # Might get overridden in post-checks
                 self.appendMoni(domapp)
                 break
 
@@ -1535,6 +1538,11 @@ class MinimumBiasTest(TimedDOMAppTest):
     expect some hits to show up with bit 30 set in the first header word.
     """
     def prepDomapp(self, domapp):
+        self.runLength = 30 # Run length must be longer to avoid
+                            # effect where LC of one DOM beats against
+                            # another, causing beacons to be
+                            # suppressed; also we stop early when a
+                            # beacon hit is found        
         self.gotMinbias = False
         self.totalHits  = 0
         TimedDOMAppTest.prepDomapp(self, domapp)
@@ -1543,8 +1551,8 @@ class MinimumBiasTest(TimedDOMAppTest):
         setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
         domapp.setTriggerMode(2)
         domapp.setPulser(mode=FE_PULSER, rate=8000)
-        domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 550)
-        domapp.setLC(mode=2, type=2, source=0, span=1)
+        domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 650)
+        domapp.setLC(mode=1, type=2, source=0, span=1, window=(25,25)) # Set min. window, to get fewer hits
         domapp.enableMinbias()
 
     def cleanupDomapp(self, domapp):
@@ -1556,7 +1564,11 @@ class MinimumBiasTest(TimedDOMAppTest):
             hitBuf = DeltaHitBuf(hitdata)
             for hit in hitBuf.next():
                 self.totalHits += 1
-                if hit.isMinbias: self.gotMinbias = True
+                self.debugMsgs.append("hit word0 = 0x%x" % hit.words[0])
+                if hit.isMinbias:
+                    self.gotMinbias = True
+                    return True # Test successful, if cleanup is ok
+        return False # Keep going
 
     def finalCheck(self):
         if self.totalHits < 1:
@@ -1591,6 +1603,7 @@ class ATWDSelectTest(TimedDOMAppTest):
                     self.hadAtwdA = True
                 elif hit.atwd_chip == 1:
                     self.hadAtwdB = True
+        return False # Don't abort early
 
     def cleanupDomapp(self, domapp):
         domapp.selectAtwd(2)
