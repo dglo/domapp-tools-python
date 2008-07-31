@@ -1294,6 +1294,55 @@ class TimedDOMAppTest(DOMAppHVTest):
         Final checks on data go here
         """
 
+class FADCClockPollutionTest(TimedDOMAppTest):
+    """
+    Look for 20 MHz oscillations
+    """
+    targetHV = 800 # This will cause HV to get turned on!
+    
+    def prepDomapp(self, domapp):
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        ATWD_PEDS_PER_LOOP = 100
+        FADC_PEDS_PER_LOOP = 200
+        MAX_ALLOWED_RMS    = 1.0
+        numloops           = 100
+        domapp.setTriggerMode(2)
+        domapp.selectMUX(255)
+        # Do the collection
+        domapp.collectPedestals(ATWD_PEDS_PER_LOOP,
+                                ATWD_PEDS_PER_LOOP,
+                                FADC_PEDS_PER_LOOP)
+        # Check number of forced triggers
+        buf = domapp.getNumPedestals()
+        atwd0, atwd1, fadc = unpack('>LLL', buf)
+        self.debugMsgs.append("Collected %d %d %d pedestals" % (atwd0, atwd1, fadc))
+        if(atwd0 != ATWD_PEDS_PER_LOOP or
+           atwd1 != ATWD_PEDS_PER_LOOP or
+           fadc != FADC_PEDS_PER_LOOP): raise Exception("Pedestal collection shortfall!")
+        
+        # Read out pedestal sums
+        buf = domapp.getPedestalAverages()
+        self.debugMsgs.append("Got %d bytes of pedestal averages" % len(buf))
+        sign = 1
+        sum  = 0
+        wf = []
+        sumval = 0
+        nbins = 256
+        for samp in xrange(nbins):
+            idx = 8*128 + samp
+            val, = unpack('>H', buf[idx*2:idx*2+2])
+            wf.append(val)
+            sumval += val
+        avg = float(sumval)/float(nbins)
+        for samp in xrange(nbins):
+            sum += sign*(wf[samp]-avg)
+            sign = -sign
+            self.debugMsgs.append("sign=%d sum=%d samp=%d val=%d" % (sign, sum, samp, wf[samp]))
+        if abs(sum) > 50:
+            self.fail("Alternating sum abs(%d) > 50!" % (sum))
+                                                    
+    def interval(self, domapp): return True # Short-circuit 'running' phase - do everything in prep
+    
 class PedestalStabilityTest(TimedDOMAppTest):
     """
     Measure pedestal stability by taking an average over several tries; replaces old-style test
@@ -1349,9 +1398,12 @@ class PedestalStabilityTest(TimedDOMAppTest):
                         atwdSum[ab][ch][samp]   += float(val)
                         atwdSumSq[ab][ch][samp] += float(val)**2
 
+            self.debugMsgs.append("Trial %d FADC waveforms:" % numloops)
+            
             for samp in xrange(256):
                 idx = 8*128 + samp
                 val, = unpack('>H', buf[idx*2:idx*2+2])
+                self.debugMsgs.append("%d, %d" % (samp, val))
                 fadcSum[samp]   += float(val)
                 fadcSumSq[samp] += float(val)**2
             numloops += 1
@@ -1943,9 +1995,9 @@ def main():
         raise SystemExit
 
     if opt.doHVTests:
-        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest,
+        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, FADCClockPollutionTest,
                             SPEScalerNotZeroTest, SNDeltaSPEHitTest,
-                            SLCOnlyHVTest, FADCHistoTest,
+                            SLCOnlyHVTest, FADCHistoTest, 
                             ATWDHistoTest])
     # Post-domapp tests
     ListOfTests.extend([DomappToIceboot,
