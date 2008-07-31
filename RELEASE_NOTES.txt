@@ -1,4 +1,6 @@
 Next:
+0002797: Add non-HV version of pedestal stability test
+0002798: Add 'Clock Pollution Test' for FADC
 0002793: Occasional MinimumBiasTest failures
 0002790: Occasional SLCOnlyHVTest failures
 0002789: Occasional SLCOnlyPulserTest failures
