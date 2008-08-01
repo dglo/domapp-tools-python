@@ -5,6 +5,7 @@
 # Started: Wed May  9 21:57:21 2007
 from __future__ import generators
 import time, threading, os, sys
+from datetime import datetime
 
 from re import search, sub
 
@@ -79,8 +80,10 @@ class DOMTest:
     def run(self, fd): pass
 
     def fail(self, str):
-        self.result = "FAIL"
-        self.summary = str
+        self.debugMsgs.append(str)
+        if self.result != "FAIL":
+            self.result = "FAIL"
+            self.summary = str
         
 class ConfigbootToIceboot(DOMTest):
     """
@@ -1067,6 +1070,7 @@ class SLCOnlyTest(DOMAppTest):
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)            
             domapp.setLC(mode=5, type=1, source=0, span=1)
+            domapp.disableMinbias() # We explicitly do not want minbias set or waveforms will creep in!
             domapp.startRun()
             domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
 
@@ -1082,7 +1086,7 @@ class SLCOnlyTest(DOMAppTest):
                         if not hit.is_spe: continue # Skip beacon-only hits
                         nhits += 1
                         if (not hit.is_beacon) and hit.hitsize > 12:
-                            self.fail("After %d hits, SLC-only hit buffer contains waveforms (%d bytes)!"
+                            self.fail("After %d hits, SLC-only hit buffer contains waveforms (%d bytes)" \
                                       % (nhits, hit.hitsize))
                             self.debugMsgs.append(str(hit))
                             broken = True
@@ -1196,105 +1200,243 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
             self.appendMoni(domapp)
             return
 
-class PedestalStabilityTest(DOMAppHVTest):
+class TimedDOMAppTest(DOMAppHVTest):
     """
-    Measure pedestal stability by taking an average over several tries
+    This class is an attempt to abstract out some common behaviors in several of the tests.
+    !!!!!!!!!
+    TRY TO USE THIS CLASS FOR NEW TESTS, AND BACK-PORT THE OLD ONES AS TIME ALLOWS!
+    !!!!!!!!
     """
+
+    targetHV = None
+    
+    def resetDomapp(self, domapp):
+        """
+        Reset method (generic)
+        """
+        domapp.setMonitoringIntervals(0, 0, 0)
+        domapp.resetMonitorBuffer()
+        
+    def prepDomapp(self, domapp):
+        """
+        Generic preparation method for domapp test - override me
+        """
+        setDefaultDACs(domapp)
+        if self.targetHV is not None:
+            self.setHV(domapp, self.targetHV)
+
+    def startRun(self, domapp):
+        """
+        Generic start method
+        """
+        domapp.startRun()
+        domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
+
+    def endRun(self, domapp): domapp.endRun()
+    
+    def cleanup(self, domapp):
+        """
+        Generic cleanup method for domapp test
+        """
+        if self.targetHV is not None:
+            self.turnOffHV(domapp)
+        self.appendMoni(domapp)
+        
+    def interval(self, domapp):
+        """
+        Do every second (e.g. poll domapp)
+        """
+        return False # Don't end test early
+        
     def run(self, fd):
-        domapp = DOMApp(self.card, self.wire, self.dom, fd)        
-        PEDESTAL_HV_VOLTS   = 800 # Is this the best value?
-        ATWD_PEDS_PER_LOOP = 100 
-        FADC_PEDS_PER_LOOP = 200 
+        """
+        Generic run method - shouldn't have to override me
+        """
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            self.resetDomapp(domapp)
+            self.prepDomapp(domapp)
+            self.startRun(domapp)
+        except Exception, e:
+            self.fail(exc_string())
+            self.cleanup(domapp)
+            return
+
+        t = MiniTimer(self.runLength*1000)
+        failstr = None
+        while not t.expired():
+            try:
+                if self.interval(domapp): break
+                time.sleep(1)
+            except Exception, e:
+                self.fail(exc_string()) # Might get overridden in post-checks
+                self.endRun(domapp)
+                self.cleanup(domapp)
+                break
+
+        try:
+            self.endRun(domapp)
+        except Exception, e:
+            self.fail(exc_string())
+            self.cleanup(domapp)
+            return
+            
+        try:
+            self.cleanup(domapp)
+        except Exception, e:
+            self.fail(exc_string())
+            return
+
+        self.finalCheck()
+
+    def finalCheck(self):
+        """
+        Final checks on data go here
+        """
+
+class FADCClockPollutionTest(TimedDOMAppTest):
+    """
+    Look for 20 MHz oscillations
+    """
+    targetHV = 800 # This will cause HV to get turned on!
+    
+    def prepDomapp(self, domapp):
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        ATWD_PEDS_PER_LOOP = 100
+        FADC_PEDS_PER_LOOP = 200
         MAX_ALLOWED_RMS    = 1.0
         numloops           = 100
-        try:
-            domapp.resetMonitorBuffer()
-            setDefaultDACs(domapp)
-            domapp.setTriggerMode(2)
-            domapp.selectMUX(255)
-            domapp.setMonitoringIntervals()
+        domapp.setTriggerMode(2)
+        domapp.selectMUX(255)
+        # Do the collection
+        domapp.collectPedestals(ATWD_PEDS_PER_LOOP,
+                                ATWD_PEDS_PER_LOOP,
+                                FADC_PEDS_PER_LOOP)
+        # Check number of forced triggers
+        buf = domapp.getNumPedestals()
+        atwd0, atwd1, fadc = unpack('>LLL', buf)
+        self.debugMsgs.append("Collected %d %d %d pedestals" % (atwd0, atwd1, fadc))
+        if(atwd0 != ATWD_PEDS_PER_LOOP or
+           atwd1 != ATWD_PEDS_PER_LOOP or
+           fadc != FADC_PEDS_PER_LOOP): raise Exception("Pedestal collection shortfall!")
+        
+        # Read out pedestal sums
+        buf = domapp.getPedestalAverages()
+        self.debugMsgs.append("Got %d bytes of pedestal averages" % len(buf))
+        sign = 1
+        sum  = 0
+        wf = []
+        sumval = 0
+        nbins = 256
+        for samp in xrange(nbins):
+            idx = 8*128 + samp
+            val, = unpack('>H', buf[idx*2:idx*2+2])
+            wf.append(val)
+            sumval += val
+        avg = float(sumval)/float(nbins)
+        for samp in xrange(nbins):
+            sum += sign*(wf[samp]-avg)
+            sign = -sign
+            self.debugMsgs.append("sign=%d sum=%d samp=%d val=%d" % (sign, sum, samp, wf[samp]))
+        if abs(sum) > 50:
+            self.fail("Alternating sum abs(%d) > 50!" % (sum))
+                                                    
+    def interval(self, domapp): return True # Short-circuit 'running' phase - do everything in prep
+    
+class PedestalStabilityTest(TimedDOMAppTest):
+    """
+    Measure pedestal stability by taking an average over several tries; replaces old-style test
+    by subclassing the new style of test.
+    """
+    
+    targetHV = 800 # This will cause HV to get turned on!
+    
+    def prepDomapp(self, domapp):
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        ATWD_PEDS_PER_LOOP = 100
+        FADC_PEDS_PER_LOOP = 200
+        MAX_ALLOWED_RMS    = 1.0
+        numloops           = 100
+        domapp.setTriggerMode(2)
+        domapp.selectMUX(255)
 
-            ### Turn on HV
-            self.setHV(domapp, PEDESTAL_HV_VOLTS)
+        ### Collect pedestals N times
+
+        atwdSum   = [[[0. for samp in xrange(128)] for ch in xrange(4)] for ab in xrange(2)]
+        atwdSumSq = [[[0. for samp in xrange(128)] for ch in xrange(4)] for ab in xrange(2)]
+        # Wheeeee!
+        fadcSum   = [0. for samp in xrange(256)]
+        fadcSumSq = [0. for samp in xrange(256)]
+        
+        numloops = 0
+        t = MiniTimer(self.runLength*1000)
+        while not t.expired():
+            # Do the collection
+            domapp.collectPedestals(ATWD_PEDS_PER_LOOP,
+                                    ATWD_PEDS_PER_LOOP,
+                                    FADC_PEDS_PER_LOOP)
+            # Check number of forced triggers
+            buf = domapp.getNumPedestals()
+            atwd0, atwd1, fadc = unpack('>LLL', buf)
+            self.debugMsgs.append("Collected %d %d %d pedestals" % (atwd0, atwd1, fadc))
+            if(atwd0 != ATWD_PEDS_PER_LOOP or
+               atwd1 != ATWD_PEDS_PER_LOOP or
+               fadc != FADC_PEDS_PER_LOOP): raise Exception("Pedestal collection shortfall!")
             
-            ### Collect pedestals N times
-
-            atwdSum   = [[[0. for samp in xrange(128)] for ch in xrange(4)] for ab in xrange(2)]
-            atwdSumSq = [[[0. for samp in xrange(128)] for ch in xrange(4)] for ab in xrange(2)]
-            # Wheeeee!
-            fadcSum   = [0. for samp in xrange(256)]
-            fadcSumSq = [0. for samp in xrange(256)]
-
-            numloops = 0
-            t = MiniTimer(self.runLength*1000)
-            while not t.expired():
-                # Do the collection
-                domapp.collectPedestals(ATWD_PEDS_PER_LOOP,
-                                        ATWD_PEDS_PER_LOOP,
-                                        FADC_PEDS_PER_LOOP)
-                # Check number of forced triggers
-                buf = domapp.getNumPedestals()
-                atwd0, atwd1, fadc = unpack('>LLL', buf)
-                self.debugMsgs.append("Collected %d %d %d pedestals" % (atwd0, atwd1, fadc))
-                if(atwd0 != ATWD_PEDS_PER_LOOP or
-                   atwd1 != ATWD_PEDS_PER_LOOP or
-                   fadc != FADC_PEDS_PER_LOOP): raise Exception("Pedestal collection shortfall!")
-
-                # Read out pedestal sums
-                buf = domapp.getPedestalAverages()
-                self.debugMsgs.append("Got %d bytes of pedestal averages" % len(buf))
+            # Read out pedestal sums
+            buf = domapp.getPedestalAverages()
+            self.debugMsgs.append("Got %d bytes of pedestal averages" % len(buf))
                 
-                # Tally sums for RMS
-                # ...not the most efficient impl., but relatively clear:
-                for ab in xrange(2):
-                    for ch in xrange(4):
-                        for samp in xrange(128):
-                            idx = (ab*4 + ch)*128 + samp
-                            val, = unpack('>h', buf[idx*2:idx*2+2])
-                            # self.debugMsgs.append("ATWD[%d][%d][%d] = %2.3f" % (ab,ch,samp,val))
-                            atwdSum[ab][ch][samp]   += float(val)
-                            atwdSumSq[ab][ch][samp] += float(val)**2
-
-                for samp in xrange(256):
-                    idx = 8*128 + samp
-                    val, = unpack('>H', buf[idx*2:idx*2+2])
-                    fadcSum[samp]   += float(val)
-                    fadcSumSq[samp] += float(val)**2
-                numloops += 1
-
-            if numloops < 1: raise Exception("No successful pedestal collections occurred!")
-            
-            # Compute final RMS
-            maxrms = 0.
+            # Tally sums for RMS
+            # ...not the most efficient impl., but relatively clear:
             for ab in xrange(2):
                 for ch in xrange(4):
                     for samp in xrange(128):
-                        rms = sqrt((atwdSumSq[ab][ch][samp]/float(numloops)) -\
-                                   ((atwdSum[ab][ch][samp]/float(numloops))**2))
-                        self.debugMsgs.append("ATWD rms[%d][%d][%d] = %2.3f" % (ab,ch,samp,rms))
-                        if rms > maxrms: maxrms = rms
-            for samp in xrange(256):
-                rms = sqrt(fadcSumSq[samp]/float(numloops) -\
-                           (fadcSum[samp]/float(numloops))**2)
-                self.debugMsgs.append("FADC rms[%d] = %2.3f" % (samp, rms))
-                if rms > maxrms: maxrms = rms
+                        idx = (ab*4 + ch)*128 + samp
+                        val, = unpack('>h', buf[idx*2:idx*2+2])
+                        # self.debugMsgs.append("ATWD[%d][%d][%d] = %2.3f" % (ab,ch,samp,val))
+                        atwdSum[ab][ch][samp]   += float(val)
+                        atwdSumSq[ab][ch][samp] += float(val)**2
 
-            ### Turn off HV
-            self.turnOffHV(domapp)
+            self.debugMsgs.append("Trial %d FADC waveforms:" % numloops)
             
-            if maxrms > MAX_ALLOWED_RMS:
-                raise Exception("Maximum allowed RMS (%2.3f) exceeeded (%2.3f)!" %\
-                                (MAX_ALLOWED_RMS, maxrms))
+            for samp in xrange(256):
+                idx = 8*128 + samp
+                val, = unpack('>H', buf[idx*2:idx*2+2])
+                self.debugMsgs.append("%d, %d" % (samp, val))
+                fadcSum[samp]   += float(val)
+                fadcSumSq[samp] += float(val)**2
+            numloops += 1
 
-        except Exception, e:
-            try:
-                self.turnOffHV(domapp)
-            except:
-                pass
-            self.fail(exc_string())
-            self.appendMoni(domapp)
-            return
+        if numloops < 1: raise Exception("No successful pedestal collections occurred!")
+            
+        # Compute final RMS
+        maxrms = 0.
+        for ab in xrange(2):
+            for ch in xrange(4):
+                for samp in xrange(128):
+                    rms = sqrt((atwdSumSq[ab][ch][samp]/float(numloops)) -\
+                               ((atwdSum[ab][ch][samp]/float(numloops))**2))
+                    self.debugMsgs.append("ATWD rms[%d][%d][%d] = %2.3f" % (ab,ch,samp,rms))
+                    if rms > maxrms: maxrms = rms
+        for samp in xrange(256):
+            rms = sqrt(fadcSumSq[samp]/float(numloops) -\
+                       (fadcSum[samp]/float(numloops))**2)
+            self.debugMsgs.append("FADC rms[%d] = %2.3f" % (samp, rms))
+            if rms > maxrms: maxrms = rms
 
+        if maxrms > MAX_ALLOWED_RMS:
+            raise Exception("Maximum allowed RMS (%2.3f) exceeeded (%2.3f)!" %\
+                            (MAX_ALLOWED_RMS, maxrms))
+
+    def interval(self, domapp): return True # Short-circuit 'running' phase - do everything in prep
+
+class NoHVPedestalStabilityTest(PedestalStabilityTest):
+    """
+    Same as NewPedestalStabilityTest, but with HV off
+    """
+    targetHV = None
+    
 class PedestalMonitoringTest(QuickDOMAppTest):
     """
     Make sure pedestal monitoring records are present and well-formatted when
@@ -1442,97 +1584,17 @@ class SNTest(DOMAppTest):
             self.appendMoni(domapp)
 
 
-class TimedDOMAppTest(DOMAppTest):
-    """
-    This class is an attempt to abstract out some common behaviors in several of the tests.
-
-    !!!!!!!!!
-    TRY TO USE THIS CLASS FOR NEW TESTS, AND BACK-PORT THE OLD ONES AS TIME ALLOWS!
-    !!!!!!!!
-    """
-    
-    def resetDomapp(self, domapp):
-        """
-        Reset method (generic)
-        """
-        domapp.setMonitoringIntervals(0, 0, 0)
-        domapp.resetMonitorBuffer()
-        
-    def prepDomapp(self, domapp):
-        """
-        Generic preparation method for domapp test - override me
-        """
-        setDefaultDACs(domapp)
-
-    def startDomapp(self, domapp):
-        """
-        Generic start method
-        """
-        domapp.startRun()
-        domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
-        
-    def cleanup(self, domapp):
-        """
-        Generic cleanup method for domapp test - override me
-        """
-        domapp.endRun()
-        self.appendMoni(domapp)
-        
-    def interval(self, domapp):
-        """
-        Do every second (e.g. poll domapp)
-        """
-        
-    def run(self, fd):
-        """
-        Generic run method - shouldn't have to override me
-        """
-        domapp = DOMApp(self.card, self.wire, self.dom, fd)
-        try:
-            self.resetDomapp(domapp)
-            self.prepDomapp(domapp)
-            self.startDomapp(domapp)
-        except KeyboardInterrupt:
-            raise SystemExit
-        except Exception, e:
-            self.fail(exc_string())
-            self.appendMoni(domapp)
-            return
-
-        t = MiniTimer(self.runLength*1000)
-        failstr = None
-        while not t.expired():
-            try:
-                self.interval(domapp)
-                time.sleep(1)
-            except KeyboardInterrupt:
-                raise SystemExit
-            except Exception, e:
-                self.fail(exc_string())
-                self.appendMoni(domapp)
-                break
-
-        try:
-            self.cleanup(domapp)
-        except KeyboardInterrupt:
-            raise SystemExit
-        except Exception, e:
-            self.fail(exc_string())
-            self.appendMoni(domapp)
-
-        self.finalCheck()
-
-    def finalCheck(self):
-        """
-        Final checks on data go here
-        """
-
 class MinimumBiasTest(TimedDOMAppTest):
     """
     Test new minimum-bias (no LC required) functionality - require LC, configure minimum bias,
     expect some hits to show up with bit 30 set in the first header word.
     """
     def prepDomapp(self, domapp):
+        self.runLength = 30 # Run length must be longer to avoid
+                            # effect where LC of one DOM beats against
+                            # another, causing beacons to be
+                            # suppressed; also we stop early when a
+                            # beacon hit is found        
         self.gotMinbias = False
         self.totalHits  = 0
         TimedDOMAppTest.prepDomapp(self, domapp)
@@ -1541,8 +1603,8 @@ class MinimumBiasTest(TimedDOMAppTest):
         setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
         domapp.setTriggerMode(2)
         domapp.setPulser(mode=FE_PULSER, rate=8000)
-        domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 550)
-        domapp.setLC(mode=2, type=2, source=0, span=1)
+        domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 650)
+        domapp.setLC(mode=1, type=2, source=0, span=1, window=(25,25)) # Set min. window, to get fewer hits
         domapp.enableMinbias()
 
     def cleanupDomapp(self, domapp):
@@ -1554,7 +1616,11 @@ class MinimumBiasTest(TimedDOMAppTest):
             hitBuf = DeltaHitBuf(hitdata)
             for hit in hitBuf.next():
                 self.totalHits += 1
-                if hit.isMinbias: self.gotMinbias = True
+                self.debugMsgs.append("hit word0 = 0x%x" % hit.words[0])
+                if hit.isMinbias:
+                    self.gotMinbias = True
+                    return True # Test successful, if cleanup is ok
+        return False # Keep going
 
     def finalCheck(self):
         if self.totalHits < 1:
@@ -1589,6 +1655,7 @@ class ATWDSelectTest(TimedDOMAppTest):
                     self.hadAtwdA = True
                 elif hit.atwd_chip == 1:
                     self.hadAtwdB = True
+        return False # Don't abort early
 
     def cleanupDomapp(self, domapp):
         domapp.selectAtwd(2)
@@ -1735,7 +1802,7 @@ class TestingSet:
             doneDict[nextTest] += 1
             yield nextTest
 
-    def doAllTests(self, domid, c, w, d):
+    def doAllTests(self, domid, c, w, d, doQuiet):
         startState = DOMTest.STATE_ICEBOOT
         testObjList = []
         dor = MiniDor(c, w, d)
@@ -1768,9 +1835,10 @@ class TestingSet:
             self.counterLock.acquire()
             runLenStr = ""
             if test.runLength: runLenStr = "%d sec " % test.runLength
-            print "%s%s%s %s %s->%s %s %s%s: %s %s" % (c,w,d, tstart, test.startState,
-                                                       test.endState, dt, runLenStr,
-                                                       test.name(), test.result, test.summary)
+            if not doQuiet or test.result != "PASS":
+                print "%s%s%s %s %s->%s %s %s%s: %s %s" % (c,w,d, tstart, test.startState,
+                                                           test.endState, dt, runLenStr,
+                                                           test.name(), test.result, test.summary)
             if test.result == "PASS":
                 self.numpassed += 1
             else:
@@ -1785,20 +1853,23 @@ class TestingSet:
             test.clearDebugTxt()
             self.counterLock.release()
             #### UNLOCK
-            if sf: return # Quit upon first failure
+            if sf: break # Quit upon first failure
+        dor.close()
             
-    def runThread(self, domid):
+    def runThread(self, domid, doQuiet, nCycles):
         c, w, d = self.domDict[domid]
         try:
-            self.doAllTests(domid, c,w,d)
+            for i in range(nCycles):
+                self.doAllTests(domid, c,w,d, doQuiet)
         except KeyboardInterrupt:
             raise SystemExit
         except Exception, e:
             print "Test sequence aborted: %s" % exc_string()        
         
-    def go(self): 
+    def go(self, doQuiet, nCycles):
+        self.tStart = datetime.now()
         for dom in self.domDict:
-            self.threads[dom] = threading.Thread(target=self.runThread, args=(dom, ))
+            self.threads[dom] = threading.Thread(target=self.runThread, args=(dom, doQuiet, nCycles))
             self.threads[dom].setDaemon(True)
             self.threads[dom].start()
         for dom in self.domDict:
@@ -1810,9 +1881,11 @@ class TestingSet:
         
     def summary(self):
         "show summary of results"
-        return "Passed tests: %d   Failed tests: %d   Total: %d" % (self.numpassed,
-                                                                    self.numfailed,
-                                                                    self.numtests)
+        dt = datetime.now() - self.tStart
+        tElapsed = dt.days*86400 + dt.seconds
+        return "Passed tests: %d   Failed tests: %d   Total: %d (%d seconds)" % (self.numpassed,
+                                                                                 self.numfailed,
+                                                                                 self.numtests, tElapsed)
 
 def getDomappToolsPythonVersion():
     f = open("/usr/local/share/domapp-tools-python-version")
@@ -1863,6 +1936,14 @@ def main():
     p.add_option("-y", "--domapp-only",
                  action="store_true",
                  dest="domappOnly",   help="Only do domapp-related tests (including state changes)")
+
+    p.add_option("-q", "--quiet",
+                 action="store_true",
+                 dest="doQuiet",      help="Suppress output for successful tests")
+
+    p.add_option("-r", "--repeat-all",
+                 action="store",      type="int",
+                 dest="nCycles",      help="Number of times to repeat entire test cycle (default=1)")
     
     p.set_defaults(stopFail         = False,
                    doHVTests        = False,
@@ -1872,6 +1953,8 @@ def main():
                    excludeDoms      = None,
                    doOnly           = False,
                    domappOnly       = False,
+                   doQuiet          = False,
+                   nCycles          = 1,
                    uploadApp        = None,
                    listTests        = False)
     opt, args = p.parse_args()
@@ -1898,6 +1981,7 @@ def main():
                         GetDomappRelease,
                         MessageSizePulserTest,
                         PedestalMonitoringTest,
+                        NoHVPedestalStabilityTest,
                         ScalerDeadtimePulserTest,
                         SNTest,
                         SLCOnlyPulserTest])
@@ -1911,8 +1995,10 @@ def main():
         raise SystemExit
 
     if opt.doHVTests:
-        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, SPEScalerNotZeroTest,
-                            SNDeltaSPEHitTest, SLCOnlyHVTest, FADCHistoTest, ATWDHistoTest])
+        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, FADCClockPollutionTest,
+                            SPEScalerNotZeroTest, SNDeltaSPEHitTest,
+                            SLCOnlyHVTest, FADCHistoTest, 
+                            ATWDHistoTest])
     # Post-domapp tests
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,
@@ -1966,11 +2052,12 @@ def main():
         revTxt = getDomappToolsPythonVersion() # Can fail if not an official installation
     except:
         pass
+
+    if not opt.doQuiet:
+        print "domapp-tools-python revision: %s" % revTxt
+        print "dor-driver release: %s" % dor.release
     
-    print "domapp-tools-python revision: %s" % revTxt
-    print "dor-driver release: %s" % dor.release
-    
-    testSet.go()
+    testSet.go(opt.doQuiet, opt.nCycles)
     print testSet.summary()
     
     raise SystemExit

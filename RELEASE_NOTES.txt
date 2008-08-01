@@ -1,5 +1,15 @@
-Next:
-0002572: Implement icetop minbias hits
+V00-02-04 08-01-08 John Jacobsen john@mail.npxdesigns.com
+0002797: Add non-HV version of pedestal stability test
+0002798: Add 'Clock Pollution Test' for FADC
+0002793: Occasional MinimumBiasTest failures
+0002790: Occasional SLCOnlyHVTest failures
+0002789: Occasional SLCOnlyPulserTest failures
+0002788: Add option to repeat entire test cycle
+0002787: Add option to suppress reporting of successful tests
+==============================================================
+
+V00-02-03 07-18-08 John Jacobsen john@mail.npxdesigns.com
+0002572: Implement [test] icetop minbias hits
 0001529: Some DOMs have bad ATWD chips and we need to be able to configure pDAQ so that only one chip gets read out
 ==============================================================
 
