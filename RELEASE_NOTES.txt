@@ -1,4 +1,8 @@
 V00-02-04 08-01-08 John Jacobsen john@mail.npxdesigns.com
+0002799: FADCClockPollutionTest fails
+==============================================================
+
+V00-02-04 08-01-08 John Jacobsen john@mail.npxdesigns.com
 0002797: Add non-HV version of pedestal stability test
 0002798: Add 'Clock Pollution Test' for FADC
 0002793: Occasional MinimumBiasTest failures
