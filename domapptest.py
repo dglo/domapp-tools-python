@@ -1338,8 +1338,9 @@ class FADCClockPollutionTest(TimedDOMAppTest):
             sum += sign*(wf[samp]-avg)
             sign = -sign
             self.debugMsgs.append("sign=%d sum=%d samp=%d val=%d" % (sign, sum, samp, wf[samp]))
-        if abs(sum) > 50:
-            self.fail("Alternating sum abs(%d) > 50!" % (sum))
+        MAX_OSC = 90
+        if abs(sum) > MAX_OSC:
+            self.fail("Alternating sum abs(%d) > %d!" % (sum, MAX_OSC))
                                                     
     def interval(self, domapp): return True # Short-circuit 'running' phase - do everything in prep
     
