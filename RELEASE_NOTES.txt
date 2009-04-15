@@ -1,3 +1,7 @@
+Next:
+0003253: flasher tests fail on PCTS
+==============================================================
+
 V00-02-04 08-01-08 John Jacobsen john@mail.npxdesigns.com
 0002799: FADCClockPollutionTest fails
 ==============================================================

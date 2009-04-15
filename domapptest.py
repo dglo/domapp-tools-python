@@ -516,17 +516,19 @@ class FlasherTest(DOMAppTest):
         if self.dom != self.abSelect: return # Automatically pass
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         try:
+            self.turnOffHV(domapp)
+            time.sleep(2) # Wait for HV to 'cool down'
             domapp.setMonitoringIntervals(0, 0, 0)
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
             setDAC(domapp, DAC_FLASHER_REF, 450)
+            domapp.setPulser(mode=BEACON, rate=4) # Turn FE pulser off
             domapp.collectPedestals(100, 100, 200)
             domapp.setTriggerMode(3)
             domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
             domapp.setCompressionMode(0)
             domapp.setDataFormat(0)
             domapp.selectMUX(3)
-            self.turnOffHV(domapp)
             domapp.startFBRun(127, 50, 0, 1, 100)
             domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
         except Exception, e:
@@ -573,7 +575,7 @@ class FlasherTest(DOMAppTest):
                         break
                     min    = None
                     max    = None
-                    top    = 800
+                    top    = 750
                     bot    = 500
                     minTOT = 5
                     start  = None
