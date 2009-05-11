@@ -1,4 +1,5 @@
 Next:
+0003248 (DOM-MB): Make sure flasherboard gets disabled at end of run and allow surface to change FB settings mid-run (add test)
 0003253: flasher tests fail on PCTS
 ==============================================================
 
