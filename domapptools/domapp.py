@@ -81,6 +81,7 @@ EXPCONTROL_GET_NUM_PEDESTALS        = 19
 EXPCONTROL_GET_PEDESTAL_AVERAGES    = 20
 EXPCONTROL_BEGIN_FB_RUN             = 27
 EXPCONTROL_END_FB_RUN               = 28
+EXPCONTROL_CHANGE_FB_SETTINGS       = 29
 
 # HAL DACs and ADCs
 DAC_ATWD0_TRIGGER_BIAS          = 0
@@ -336,6 +337,11 @@ class DOMApp:
 
     def startFBRun(self, bright, win, delay, mask, rate):
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_BEGIN_FB_RUN,
+                     data=pack(">HHhHH", bright, win, delay, mask, rate)
+                     )
+
+    def changeFBParams(self, bright, win, delay, mask, rate):
+        self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_CHANGE_FB_SETTINGS,
                      data=pack(">HHhHH", bright, win, delay, mask, rate)
                      )
 

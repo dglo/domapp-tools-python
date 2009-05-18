@@ -512,28 +512,13 @@ class FlasherTest(DOMAppTest):
     def __init__(self, card, wire, dom, dor, abSelect='A'):
         DOMAppTest.__init__(self, card, wire, dom, dor)
         self.abSelect = abSelect
-    def run(self, fd):
-        if self.dom != self.abSelect: return # Automatically pass
-        domapp = DOMApp(self.card, self.wire, self.dom, fd)
-        try:
-            domapp.setMonitoringIntervals(0, 0, 0)
-            domapp.resetMonitorBuffer()
-            setDefaultDACs(domapp)
-            setDAC(domapp, DAC_FLASHER_REF, 450)
-            domapp.collectPedestals(100, 100, 200)
-            domapp.setTriggerMode(3)
-            domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
-            domapp.setCompressionMode(0)
-            domapp.setDataFormat(0)
-            domapp.selectMUX(3)
-            self.turnOffHV(domapp)
-            domapp.startFBRun(127, 50, 0, 1, 100)
-            domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
-        except Exception, e:
-            self.fail(exc_string())
-            self.appendMoni(domapp)
-            return
 
+    def junkDomappHits(self, domapp, msec=1000):
+        t = MiniTimer(msec)
+        while not t.expired():
+            domapp.getWaveformData()
+            
+    def runLoop(self, domapp):
         t = MiniTimer(self.runLength*1000)
         gotData = False
         nhits = 0
@@ -573,7 +558,7 @@ class FlasherTest(DOMAppTest):
                         break
                     min    = None
                     max    = None
-                    top    = 800
+                    top    = 750
                     bot    = 500
                     minTOT = 5
                     start  = None
@@ -600,16 +585,42 @@ class FlasherTest(DOMAppTest):
                         self.debugMsgs.append(hit)
                         hitOk = False
                         break
-                    
+        return gotData, nhits
+        
+    def run(self, fd):
+        if self.dom != self.abSelect: return # Automatically pass
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
         try:
-            domapp.endRun()
+            self.turnOffHV(domapp)
+            time.sleep(2) # Wait for HV to 'cool down'
+            domapp.setMonitoringIntervals(0, 0, 0)
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            setDAC(domapp, DAC_FLASHER_REF, 450)
+            domapp.collectPedestals(100, 100, 200)
+            domapp.setTriggerMode(3)
+            domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
+            domapp.setCompressionMode(0)
+            domapp.setDataFormat(0)
+            domapp.selectMUX(3)
+            rate = 100
+            domapp.startFBRun(127, 50, 0, 1, rate)
+            domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
+
+            try:
+                for i in range(4):
+                    gotData, nhits = self.runLoop(domapp)
+                    if not gotData: self.fail("Did not get any hit data from DOM!")
+                    if nhits < 1:
+                        self.fail("Didn't get any hits!")
+                    rate /= 2
+                    domapp.changeFBParams(127, 50, 0, 1, rate)
+                    self.junkDomappHits(domapp, msec=1000)
+            finally:
+                domapp.endRun()
         except Exception, e:
             self.fail(exc_string())
             self.appendMoni(domapp)
-
-        if not gotData: self.fail("Did not get any hit data from DOM!")
-        if nhits < 1:
-            self.fail("Didn't get any hits!")
 
 class FlasherATest(FlasherTest):
     """
@@ -678,8 +689,7 @@ def unpackMoni(monidata):
 
 def getLastMoniMsgs(domapp):
     """
-    Drain buffered monitoring messages - return concatenated
-    as big ASCII string
+    Drain buffered monitoring messages - return list of string representations
     """
     ret = []
     try:
@@ -1094,6 +1104,7 @@ class SLCOnlyTest(DOMAppTest):
 
             domapp.endRun()
             if doHV: self.turnOffHV(domapp)
+            domapp.setPulser(mode=BEACON, rate=4) # Turn FE pulser off
 
             if nhits < 1:
                 self.fail("No hits found!")
