@@ -1539,6 +1539,20 @@ class DeltaCompressionBeaconTest(DOMAppTest):
         if not gotData:
             self.fail("Didn't get any hit data!")
 
+class SLCEngineeringFormatTest(DOMAppTest):
+    """
+    Disallow SLC when engineering format is set
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        domapp.setDataFormat(0)
+        domapp.setEngFormat(0, 4*(2,), (32, 0, 0, 0))
+        try:
+            domapp.setLC(mode=1, type=1, source=0, span=1)
+            self.fail('DOMApp did NOT complain about SLC when engineering format set')
+        except MessagingException: # We actually want this
+            pass 
+            
 class SNTest(DOMAppTest):
     """
     Make sure no gaps are present in SN data
@@ -1639,7 +1653,7 @@ class MinimumBiasTest(TimedDOMAppTest):
             self.fail("Got no waveform data!!!")
         if not self.gotMinbias:
             self.fail("Got no minimum bias data (%d total hits)!!!" % self.totalHits)
-            
+
 class ATWDSelectTest(TimedDOMAppTest):
     """
     Use the more abstract TimedDOMAppTest to make sure that the ATWD select function works
@@ -1996,7 +2010,8 @@ def main():
                         NoHVPedestalStabilityTest,
                         ScalerDeadtimePulserTest,
                         SNTest,
-                        SLCOnlyPulserTest])
+                        SLCOnlyPulserTest,
+                        SLCEngineeringFormatTest])
 
     if opt.doFlasherTests == "A":
         ListOfTests.extend([FlasherATest])

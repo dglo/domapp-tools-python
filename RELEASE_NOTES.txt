@@ -1,3 +1,7 @@
+V00-02-07 08-26-09 John Jacobsen john@mail.npxdesigns.com
+0003497 (DOM-MB): Setting SLC mode should fail if engineering format is set.
+==============================================================
+
 V00-02-06 05-18-09 John Jacobsen john@mail.npxdesigns.com
 0003248 (DOM-MB): Make sure flasherboard gets disabled at end of run and allow surface to change FB settings mid-run (add test)
 0003253: flasher tests fail on PCTS
