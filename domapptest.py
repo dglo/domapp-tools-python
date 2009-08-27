@@ -1546,13 +1546,37 @@ class SLCEngineeringFormatTest(DOMAppTest):
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         domapp.setDataFormat(0)
-        domapp.setEngFormat(0, 4*(2,), (32, 0, 0, 0))
         try:
             domapp.setLC(mode=1, type=1, source=0, span=1)
             self.fail('DOMApp did NOT complain about SLC when engineering format set')
         except MessagingException: # We actually want this
-            pass 
-            
+            pass
+        # Set delta compression and SLC, then revert to eng. format...
+        # ... should reset LC mode and type.
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.setLC(mode=1, type=1, source=0, span=1)
+        domapp.setDataFormat(0)
+        domapp.startRun()
+        mlist = getLastMoniMsgs(domapp)
+        domapp.endRun()
+        mode, type = getLastModeTypeMsg(mlist)
+        if mode != 0 or type != 0:
+            self.debugMsgs.append(mlist)
+            self.fail('Got mode=%s, type=%s' % (mode, type))
+
+def getLastModeTypeMsg(mlist):
+    """
+    Return LC mode and type as reported from a short stream of domapp monitoring data
+    """
+    mode, type = None, None
+    for l in mlist:
+        m = re.search('set_HAL_lc_mode\(LCmode=(\d+), LCtype=(\d+)\)', l)
+        if m:
+            mode = int(m.group(1))
+            type = int(m.group(2))
+    return mode, type
+
 class SNTest(DOMAppTest):
     """
     Make sure no gaps are present in SN data
