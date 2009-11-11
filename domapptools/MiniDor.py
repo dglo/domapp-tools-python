@@ -138,6 +138,23 @@ class MiniDor:
             return (False, exc_string())
         return (True, "")
 
+    def icebootReset(self):
+        pat = """(?mx)
+                 ^        # newline
+                 \        # single space
+                 Iceboot
+                 \        # single space
+                 \(.+?\)  # something in parens
+                 \ build\ # ' build '
+                 (\d+)    # actual version number
+                 \.{5}    # five dots
+                 \s+>     # whitespace and prompt
+                 """
+        self.writeTimeout(self.fd, 'reboot\r\n')
+        txt = self.readExpect(self.fd, pat)
+        version = int(search(pat, txt).group(1))
+        return txt, version    
+
     # Versions which return both success and error message
     fpgaReloadSleepTime = 8
     def isInIceboot2(self):         return self.se("\r\n", ">")

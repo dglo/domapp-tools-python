@@ -155,6 +155,35 @@ class IcebootToDomapp(DOMTest):
             # FIXME - test w/ domapp message here
             pass
 
+iceboot_versions = {}
+
+class IcebootSelfReset(DOMTest):
+    """
+    Try 'reset' command inside Iceboot to get 'Iceboot (...) build...'
+    information, like 'versions' command does.
+    """
+    def __init__(self, card, wire, dom, dor):
+        DOMTest.__init__(self, card, wire, dom, dor,
+                         start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ICEBOOT)
+
+    def run(self, fd):
+        try:
+            txt, version = self.dor.icebootReset()
+        except ExpectStringNotFoundException, e:
+            self.fail('Did not get expected data back from Iceboot!')
+            self.debugMsgs.append(txt)
+            self.debugMsgs.append(exc_string())
+        cwd = "%s%s%s" % (self.card, self.wire, self.dom)
+        global iceboot_versions
+        if cwd not in iceboot_versions:
+            iceboot_versions[cwd] = version
+        else:
+            if iceboot_versions[cwd] != version:
+                self.fail('Version from Iceboot not correct!')
+                self.debugMsgs.append("Expected '%s', got '%s'" % \
+                                      (iceboot_versions[cwd], version))
+
+    
 class CheckIceboot(DOMTest):
     """
     Make sure I'm in iceboot when I think I should be
@@ -2015,6 +2044,7 @@ def main():
                    CheckConfigboot,
                    ConfigbootToIceboot,
                    CheckIceboot,
+                   IcebootSelfReset,
                    SoftbootCycle,
                    IcebootToDomapp]
 
