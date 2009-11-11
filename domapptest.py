@@ -177,12 +177,13 @@ class IcebootSelfReset(DOMTest):
         global iceboot_versions
         if cwd not in iceboot_versions:
             iceboot_versions[cwd] = version
+            self.summary = version
         else:
             if iceboot_versions[cwd] != version:
                 self.fail('Version from Iceboot not correct!')
                 self.debugMsgs.append("Expected '%s', got '%s'" % \
                                       (iceboot_versions[cwd], version))
-
+        
     
 class CheckIceboot(DOMTest):
     """
