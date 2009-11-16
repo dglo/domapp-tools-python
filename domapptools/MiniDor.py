@@ -138,6 +138,10 @@ class MiniDor:
             return (False, exc_string())
         return (True, "")
 
+    def get_fpga_versions(self):
+        self.writeTimeout(self.fd, 'fpga-versions\r\n')
+        return self.readExpect(self.fd, '>')
+        
     def icebootReset(self):
         pat = """(?mx)
                  ^        # newline

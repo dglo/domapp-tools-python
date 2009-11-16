@@ -171,8 +171,14 @@ class IcebootSelfReset(DOMTest):
             txt, version = self.dor.icebootReset()
         except ExpectStringNotFoundException, e:
             self.fail('Did not get expected data back from Iceboot!')
-            self.debugMsgs.append(txt)
+            self.debugMsgs.append(str(e))
             self.debugMsgs.append(exc_string())
+            try:
+                txt = self.dor.get_fpga_versions()
+                self.debugMsgs.append(txt)
+            except Exception, e:
+                self.debugMsgs.append(str(e))
+            return
         cwd = "%s%s%s" % (self.card, self.wire, self.dom)
         global iceboot_versions
         if cwd not in iceboot_versions:
