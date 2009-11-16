@@ -18,8 +18,9 @@ class ExpectStringNotFoundException(Exception): pass
 class WriteTimeoutException(Exception): pass
 class DomappFileNotFoundException(Exception): pass
 
+DEFAULT_TIMEOUT = 10000
+
 class MiniDor:
-    DEFAULT_TIMEOUT = 10000
     def __init__(self, card=0, wire=0, dom='A'):
         self.card = card; self.wire=wire; self.dom=dom
         self.devFileName = os.path.join("/", "dev", "dhc%dw%dd%s" % (self.card, self.wire, self.dom))
@@ -137,6 +138,11 @@ class MiniDor:
         except Exception, e:
             return (False, exc_string())
         return (True, "")
+
+    def iceboot_get_buffer_dump(self):
+        self.writeTimeout(self.fd,
+                          '0 30 0 ?DO $80000000 i 4 * + @ . drop LOOP\r\n')
+        return self.readExpect(self.fd, '>')
 
     def get_fpga_versions(self):
         self.writeTimeout(self.fd, 'fpga-versions\r\n')

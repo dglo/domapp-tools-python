@@ -121,7 +121,7 @@ def decode_dom_buffer(buf):
     >>> assert('Iceboot (az-prod) build 437' in b)
     """
     s = ""
-    for n in [int(s_) for s_ in findall(r'(?m)^(\d+)$', buf)]:
+    for n in [int(s_) for s_ in findall(r'(?m)^(\d+)\s*$', buf)]:
         for i in range(4):
             byte = (n >> i*8) & 0xFF
             if byte > 31:

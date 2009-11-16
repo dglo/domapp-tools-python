@@ -15,6 +15,7 @@ from domapptools.domapp import *
 from domapptools.MiniDor import *
 from domapptools.DeltaHit import *
 from domapptools.EngHit import *
+from domapptools.decode_dom_buffer import decode_dom_buffer
 
 from os.path import exists
 from math import sqrt
@@ -174,8 +175,9 @@ class IcebootSelfReset(DOMTest):
             self.debugMsgs.append(str(e))
             self.debugMsgs.append(exc_string())
             try:
-                txt = self.dor.get_fpga_versions()
-                self.debugMsgs.append(txt)
+                txt = self.dor.iceboot_get_buffer_dump()
+                buffer = decode_dom_buffer(txt)
+                self.debugMsgs.append(buffer)
             except Exception, e:
                 self.debugMsgs.append(str(e))
             return
