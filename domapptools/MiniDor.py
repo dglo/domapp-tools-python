@@ -20,6 +20,120 @@ class DomappFileNotFoundException(Exception): pass
 
 DEFAULT_TIMEOUT = 10000
 
+
+CSPAT = """(?m)\
+/dev/dhc(\d)w(\d)d(\w)
+RX: (\d+)B, MSGS=(\d+) NINQ=(\d+) PKTS=(\d+) ACKS=(\d+)
+BADPKT=(\d+) BADHDR=(\d+) BADSEQ=(\d+) NCTRL=(\d+) NCI=(\d+) NIC=(\d+)
+TX: (\d+)B, MSGS=(\d+) NOUTQ=(\d+) RESENT=(\d+) PKTS=(\d+) ACKS=(\d+)
+NACKQ=(\d+) NRETXB=(\d+) RETXB_BYTES=(\d+) NRETXQ=(\d+) NCTRL=(\d+) NCI=(\d+) NIC=(\d+)
+
+NCONNECTS=(\d+) NHDWRTIMEOUTS=(\d+) OPEN=(\S+) CONNECTED=(\S+)
+RXFIFO=(.+?) TXFIFO=(.+?) DOM_RXFIFO=(\S+)"""
+
+
+class InvalidComstatException(Exception):
+    pass
+
+
+class CommStats:
+    """
+    Class to parse and store comstat values and to highlight changes in same
+    
+    >>> cstxt = '''
+    ... /dev/dhc1w0dA
+    ... RX: 4569685B, MSGS=283621 NINQ=0 PKTS=512429 ACKS=151303
+    ... BADPKT=65535 BADHDR=0 BADSEQ=124 NCTRL=0 NCI=87266 NIC=120555
+    ... TX: 39226409B, MSGS=95085 NOUTQ=0 RESENT=10955 PKTS=445981 ACKS=283865
+    ... NACKQ=0 NRETXB=0 RETXB_BYTES=0 NRETXQ=0 NCTRL=0 NCI=889993 NIC=10140
+    ...
+    ... NCONNECTS=0 NHDWRTIMEOUTS=0 OPEN=true CONNECTED=true
+    ... RXFIFO=empty TXFIFO=almost empty,empty DOM_RXFIFO=notfull'''
+    >>> cs = CommStats(cstxt)
+    >>> cs.card, cs.pair, cs.dom
+    (1, 0, 'A')
+    >>> cs.rxbytes, cs.rxmsgs, cs.inq, cs.rxpkts, cs.rxacks
+    (4569685L, 283621L, 0, 512429L, 151303L)
+    >>> cs.badpkt, cs.badhdr, cs.badseq, cs.rxctrl, cs.rxci, cs.rxic
+    (65535, 0, 124, 0, 87266L, 120555L)
+    >>> cs.txbytes, cs.txmsgs, cs.outq, cs.resent, cs.txpkts, cs.txacks
+    (39226409L, 95085L, 0, 10955, 445981L, 283865L)
+    >>> cs.nackq, cs.nretxb, cs.retxb_bytes, cs.nretxq, cs.nctrl, cs.txci, cs.txic
+    (0, 0, 0, 0, 0, 889993L, 10140L)
+    >>> cs.nconnects, cs.hwtimeouts, cs.open, cs.connected
+    (0, 0, True, True)
+    >>> cs.rxfifo, cs.txfifo, cs.dom_rxfifo
+    ('empty', 'almost empty,empty', 'notfull')
+    >>> cs-cs
+    {}
+    >>> from copy import deepcopy
+    >>> cs1 = deepcopy(cs)
+    >>> cs1.rxbytes += 239
+    >>> cs1-cs
+    {'rxbytes': 239L}
+    >>> cs1.rxpkts += 3
+    >>> (cs1-cs)['rxpkts']
+    3L
+    >>> cs1.rxfifo = "not empty"
+    >>> (cs1-cs)['rxfifo']
+    'empty -> not empty'
+    """
+    def __init__(self, txt):
+        if txt is None:
+            raise InvalidComstatException('No string argument supplied!')
+        m = search(CSPAT, txt)
+        if not m:
+            raise InvalidComstatException('Invalid comstats text!  "%s"' % txt)
+        groups = list(m.groups())
+        self.card = int(groups.pop(0))
+        self.pair = int(groups.pop(0))
+        self.dom = groups.pop(0)
+        self.rxbytes = long(groups.pop(0))
+        self.rxmsgs = long(groups.pop(0))
+        self.inq = int(groups.pop(0))
+        self.rxpkts = long(groups.pop(0))
+        self.rxacks = long(groups.pop(0))
+        self.badpkt = int(groups.pop(0))
+        self.badhdr = int(groups.pop(0))
+        self.badseq = int(groups.pop(0))
+        self.rxctrl = int(groups.pop(0))
+        self.rxci = long(groups.pop(0))
+        self.rxic = long(groups.pop(0))
+        self.txbytes = long(groups.pop(0))
+        self.txmsgs = long(groups.pop(0))
+        self.outq = int(groups.pop(0))
+        self.resent = int(groups.pop(0))
+        self.txpkts = long(groups.pop(0))
+        self.txacks = long(groups.pop(0))
+        self.nackq = int(groups.pop(0))
+        self.nretxb = int(groups.pop(0))
+        self.retxb_bytes = int(groups.pop(0))
+        self.nretxq = int(groups.pop(0))
+        self.nctrl = int(groups.pop(0))
+        self.txci = long(groups.pop(0))
+        self.txic = long(groups.pop(0))
+        self.nconnects = int(groups.pop(0))
+        self.hwtimeouts = int(groups.pop(0))
+        self.open = (groups.pop(0)=='true') and True or False
+        self.connected = (groups.pop(0)=='true') and True or False
+        self.rxfifo = groups.pop(0)
+        self.txfifo = groups.pop(0)
+        self.dom_rxfifo = groups.pop(0)
+        
+    def __sub__(self, cs):
+        ret = {}
+        keys = self.__dict__.keys()
+        keys.sort()
+        for key in keys:
+            s, c = self.__dict__[key], cs.__dict__[key]
+            if s != c:
+                if type(s) in (int, long) and type(c) in (int, long):
+                    ret[key] = s-c
+                else:
+                    ret[key] = "%s -> %s" % (c, s)
+        return ret
+    
+                
 class MiniDor:
     def __init__(self, card=0, wire=0, dom='A'):
         self.card = card; self.wire=wire; self.dom=dom
@@ -227,10 +341,7 @@ class MiniDor:
     def icebootToDomapp(self):     return self.icebootToDomapp2()[0]
     def icebootToEcho(self):       return self.icebootToEcho2()[0]
     
-def main():
-    dom00a = MiniDor(0,0,'A')
-    dom00a.open()
-    dom00a.close()
-
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    import doctest
+    doctest.testmod()
 
