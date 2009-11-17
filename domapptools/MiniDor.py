@@ -21,15 +21,14 @@ class DomappFileNotFoundException(Exception): pass
 DEFAULT_TIMEOUT = 10000
 
 
-CSPAT = """(?m)\
-/dev/dhc(\d)w(\d)d(\w)
-RX: (\d+)B, MSGS=(\d+) NINQ=(\d+) PKTS=(\d+) ACKS=(\d+)
-BADPKT=(\d+) BADHDR=(\d+) BADSEQ=(\d+) NCTRL=(\d+) NCI=(\d+) NIC=(\d+)
-TX: (\d+)B, MSGS=(\d+) NOUTQ=(\d+) RESENT=(\d+) PKTS=(\d+) ACKS=(\d+)
-NACKQ=(\d+) NRETXB=(\d+) RETXB_BYTES=(\d+) NRETXQ=(\d+) NCTRL=(\d+) NCI=(\d+) NIC=(\d+)
-
-NCONNECTS=(\d+) NHDWRTIMEOUTS=(\d+) OPEN=(\S+) CONNECTED=(\S+)
-RXFIFO=(.+?) TXFIFO=(.+?) DOM_RXFIFO=(\S+)"""
+CSPAT = """(?msx)\
+/dev/dhc(\d)w(\d)d(\w)\s*
+RX:\s*(\d+)B,\s*MSGS=(\d+)\s*NINQ=(\d+)\s*PKTS=(\d+)\s*ACKS=(\d+)\s*
+\s*BADPKT=(\d+)\s*BADHDR=(\d+)\s*BADSEQ=(\d+)\s*NCTRL=(\d+)\s*NCI=(\d+)\s*NIC=(\d+)\s*
+TX:\s*(\d+)B,\s*MSGS=(\d+)\s*NOUTQ=(\d+)\s*RESENT=(\d+)\s*PKTS=(\d+)\s*ACKS=(\d+)\s*
+NACKQ=(\d+)\s*NRETXB=(\d+)\s*RETXB_BYTES=(\d+)\s*NRETXQ=(\d+)\s*NCTRL=(\d+)\s*NCI=(\d+)\s*NIC=(\d+)\s*
+NCONNECTS=(\d+)\s*NHDWRTIMEOUTS=(\d+)\s*OPEN=(\S+)\s*CONNECTED=(\S+)\s*
+RXFIFO=(.+?)\ TXFIFO=(.+?)\ DOM_RXFIFO=(\S+)"""
 
 
 class InvalidComstatException(Exception):
@@ -49,6 +48,16 @@ class CommStats:
     ...
     ... NCONNECTS=0 NHDWRTIMEOUTS=0 OPEN=true CONNECTED=true
     ... RXFIFO=empty TXFIFO=almost empty,empty DOM_RXFIFO=notfull'''
+    >>> cs2txt = '''\
+    ... /dev/dhc2w2dB
+    ... RX: 6375556B, MSGS=357989 NINQ=0 PKTS=462676 ACKS=82745
+    ... BADPKT=328 BADHDR=0 BADSEQ=0 NCTRL=0 NCI=78259 NIC=78421
+    ... TX: 9673282B, MSGS=69570 NOUTQ=0 RESENT=7 PKTS=440842 ACKS=358089
+    ... NACKQ=0 NRETXB=0 RETXB_BYTES=0 NRETXQ=0 NCTRL=0 NCI=782590 NIC=56413
+    ...
+    ... NCONNECTS=0 NHDWRTIMEOUTS=0 OPEN=true CONNECTED=true
+    ... RXFIFO=empty TXFIFO=almost empty,empty DOM_RXFIFO=notfull'''
+    >>> cs2 = CommStats(cs2txt)
     >>> cs = CommStats(cstxt)
     >>> cs.card, cs.pair, cs.dom
     (1, 0, 'A')
@@ -128,7 +137,7 @@ class CommStats:
             s, c = self.__dict__[key], cs.__dict__[key]
             if s != c:
                 if type(s) in (int, long) and type(c) in (int, long):
-                    ret[key] = s-c
+                    ret[key] = int(s-c)
                 else:
                     ret[key] = "%s -> %s" % (c, s)
         return ret

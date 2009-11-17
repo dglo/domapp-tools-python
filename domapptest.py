@@ -8,6 +8,7 @@ import time, threading, os, sys
 from datetime import datetime
 
 from re import search, sub
+from pprint import PrettyPrinter
 
 from domapptools.dor import *
 from domapptools.exc_string import exc_string
@@ -169,15 +170,19 @@ class IcebootSelfReset(DOMTest):
 
     def run(self, fd):
         try:
+            cs0 = CommStats(self.dor.commStats())
             txt, version = self.dor.icebootReset()
         except ExpectStringNotFoundException, e:
+            cs1 = CommStats(self.dor.commStats())
             self.fail('Did not get expected data back from Iceboot!')
             self.debugMsgs.append(str(e))
             self.debugMsgs.append(exc_string())
+            pp = PrettyPrinter(indent=4)
+            self.debugMsgs.append('\nDifference in commstats:\n%s\n' % pp.pformat(cs1-cs0))
             try:
                 txt = self.dor.iceboot_get_buffer_dump()
                 buffer = decode_dom_buffer(txt)
-                self.debugMsgs.append(buffer)
+                self.debugMsgs.append('\nDOM transmit buffer:\n%s\n' % buffer)
             except Exception, e:
                 self.debugMsgs.append(str(e))
             return
