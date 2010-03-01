@@ -72,6 +72,8 @@ DATA_ACC_RESET_MONI_BUF         = 29
 DATA_ACC_MONI_AVAIL             = 30
 DATA_ACC_HISTO_CHARGE_STAMPS    = 34
 DATA_ACC_SELECT_ATWD            = 35
+DATA_ACC_GET_F_MONI_RATE_TYPE   = 36
+DATA_ACC_SET_F_MONI_RATE_TYPE   = 37
 
 # EXPERIMENT_CONTROL messages subtypes
 EXPCONTROL_BEGIN_RUN                = 12
@@ -514,3 +516,18 @@ class DOMApp:
             data=pack(">bbhi", ib, rw, n, address)
             )
 
+
+    def get_f_moni_rate_type(self):
+        """
+        Get moni rate type, as reported in 'fast' moni ASCII 'F' records:
+        '0' = HLC
+        '1' = SLC
+        """
+        return self.sendMsg(DATA_ACCESS, DATA_ACC_GET_F_MONI_RATE_TYPE)
+
+    def set_f_moni_rate_type(self, type):
+        """
+        Set moni rate type (sett get_f_moni_rate_type)
+        """
+        self.sendMsg(DATA_ACCESS, DATA_ACC_SET_F_MONI_RATE_TYPE, data=pack('b', type))
+    

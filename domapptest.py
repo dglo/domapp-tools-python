@@ -364,7 +364,7 @@ class EchoCommResetTest(DOMTest):
             
 ############################## DOMAPP TEST BASE CLASSES ############################
             
-class QuickDOMAppTest(DOMTest):
+class SimpleDomAppTest(DOMTest):
     "Short tests specific to domapp - no run length specified"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
@@ -416,7 +416,7 @@ class DOMAppTest(DOMTest):
             hvadc, hvdac = domapp.queryHV()
             self.debugMsgs.append("HV: read %d V (ADC) %d V (DAC)" % (hvadc/2,hvdac/2))
             if abs(hvadc-hv*2) <= HV_TOLERANCE: return
-        raise Exception("HV deviates too much from set value!")
+        raise Exception("HV deviates too much from set value (got %s, wanted %s)!" % (hvadc, hv*2))
     
     def turnOffHV(self, domapp):
         """
@@ -484,7 +484,7 @@ class ChargeStampHistoTest(DOMAppHVTest):
                 mlist = getLastMoniMsgs(domapp)
                 for m in mlist:
                     if doATWD:
-                        s1 = re.search('ATWD CS (\S+) (\d+)--(\d+) entries: (.+)', m)
+                        s1 = search('ATWD CS (\S+) (\d+)--(\d+) entries: (.+)', m)
                         if s1:
                             chip    = s1.group(1)
                             chan    = int(s1.group(2))
@@ -494,7 +494,7 @@ class ChargeStampHistoTest(DOMAppHVTest):
                             for x in map(int, rest.split()):
                                 if x > 0: gotATWDCounts[chip] = True
                     else:
-                        s1 = re.search('FADC CS--(\d+) entries: (.+)', m)
+                        s1 = search('FADC CS--(\d+) entries: (.+)', m)
                         if s1:
                             entries = s1.group(1)
                             rest    = s1.group(2)
@@ -747,7 +747,7 @@ def getLastMoniMsgs(domapp):
 
 ################################### SPECIFIC TESTS ###############################
 
-class GetDomappRelease(QuickDOMAppTest):
+class GetDomappRelease(SimpleDomAppTest):
     """
     Ask domapp for its release string
     """
@@ -758,7 +758,7 @@ class GetDomappRelease(QuickDOMAppTest):
         except Exception, e:
             self.fail(exc_string())
 
-class DOMIDTest(QuickDOMAppTest):
+class DOMIDTest(SimpleDomAppTest):
     """
     Get DOM ID from domapp
     """
@@ -839,7 +839,7 @@ class ScalerDeadtimePulserTest(DOMAppTest):
         while not t.expired():
             mlist = getLastMoniMsgs(domapp)
             for m in mlist:
-                s1 = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
+                s1 = search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
                 if s1:
                     deadtime = int(s1.group(4))
                     if(deadtime <= 0):
@@ -926,8 +926,8 @@ class SPEScalerNotZeroTest(DOMAppHVTest):
                 mlist = getLastMoniMsgs(domapp)
                 for m in mlist:
                     self.debugMsgs.append(m)
-                    s1 = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
-                    s2 = re.search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
+                    s1 = search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
+                    s2 = search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
                     if s1:
                         gotMoniFast = True
                         if fastVirgin: fastVirgin = False # Skip first record which might be smaller or zero
@@ -1036,8 +1036,8 @@ class FastMoniTestHV(DOMAppHVTest):
             gotF     = False
             gotHW    = False
             for m in mlist:
-                s1 = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
-                s2 = re.search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
+                s1 = search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
+                s2 = search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
                 if s1:
                     gotF = True
                     fastMoniRecordCount += 1
@@ -1095,7 +1095,7 @@ class FastMoniTestHV(DOMAppHVTest):
         
         mlist = getLastMoniMsgs(domapp)
         for m in mlist:
-            s1 = re.search(r'^F \d+ \d+ (\d+) \d+$', m)
+            s1 = search(r'^F \d+ \d+ (\d+) \d+$', m)
             if s1:
                 hitsMonitored += int(s1.group(1))
                             
@@ -1317,7 +1317,6 @@ class TimedDOMAppTest(DOMAppHVTest):
             return
 
         t = MiniTimer(self.runLength*1000)
-        failstr = None
         while not t.expired():
             try:
                 if self.interval(domapp): break
@@ -1492,7 +1491,7 @@ class NoHVPedestalStabilityTest(PedestalStabilityTest):
     """
     targetHV = None
     
-class PedestalMonitoringTest(QuickDOMAppTest):
+class PedestalMonitoringTest(SimpleDomAppTest):
     """
     Make sure pedestal monitoring records are present and well-formatted when
     pedestal generation occurs
@@ -1506,7 +1505,7 @@ class PedestalMonitoringTest(QuickDOMAppTest):
             domapp.collectPedestals(100, 100, 200)
             mlist = getLastMoniMsgs(domapp)
             for m in mlist:
-                s = re.search(r'PED', m)
+                s = search(r'PED', m)
                 if s: pedcount += 1
                 self.debugMsgs.append(m)
             
@@ -1614,7 +1613,7 @@ def getLastModeTypeMsg(mlist):
     """
     mode, type = None, None
     for l in mlist:
-        m = re.search('set_HAL_lc_mode\(LCmode=(\d+), LCtype=(\d+)\)', l)
+        m = search('set_HAL_lc_mode\(LCmode=(\d+), LCtype=(\d+)\)', l)
         if m:
             mode = int(m.group(1))
             type = int(m.group(2))
@@ -1787,6 +1786,7 @@ class ATWDBOnlyTest(ATWDSelectTest):
         if not self.hadAtwdB:
             self.fail("Got no ATWD B data!")
         ATWDSelectTest.finalCheck(self)
+
             
 class ATWDBothTest(ATWDSelectTest):
     """
@@ -1805,9 +1805,100 @@ class ATWDBothTest(ATWDSelectTest):
         ATWDSelectTest.finalCheck(self)
 
 
+class FRecordsLcTypePrepTest(TimedDOMAppTest):
+    """
+    Make sure we can get/set SLC/HLC for F record rate readout
+    """
+    def prepDomapp(self, domapp):
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        # Check default F moni rate type:
+        t, = unpack('b', domapp.get_f_moni_rate_type())
+        if t != 0:
+            self.fail('Unexpected F moni rate type (%d), expected 0!' % t)
+
+        # Test set/get:
+        domapp.set_f_moni_rate_type(1) # SLC
+        t, = unpack('b', domapp.get_f_moni_rate_type())
+        if t != 1:
+            self.fail('Unexpected F moni rate type (%d), expected 1!' % t)
+
+    def interval(self, domapp): # Skip actual data taking
+        return True
+    
+    
+class LCFRecordsTest(TimedDOMAppTest):
+    """
+    Make sure one can set HLC/SLC 'F' records and that the behavior is correct; basically,
+    SLC rates should be >= HLC rates.
+    """
+    targetHV = 1200 # Will cause HV to get turned on!
+    HLC = 0
+    SLC = 1
+    
+    def prepDomapp(self, domapp):
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        self.hadData = False
+        self.hit_sum = 0
+        self.num_hit_recs = 0
+        
+        domapp.set_f_moni_rate_type(self.LcTypeForFRecord) # SLC
+        t, = unpack('b', domapp.get_f_moni_rate_type())
+        if t != self.LcTypeForFRecord:
+            self.fail('Unexpected F moni rate type (%d), expected %d!' \
+                      % (t, self.LcTypeForFRecord))
+
+        setDefaultDACs(domapp)
+        domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 500)            
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.setTriggerMode(2)
+        domapp.setLC(mode=1, type=1, source=0, span=1)
+                    
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            self.hadData = True
+        moni = getLastMoniMsgs(domapp)
+        for msg in moni:
+            s = search(r'^F (\d+) (\d+) (\d+) (\d+)$', msg)
+            if s:
+                hits = int(s.group(3))
+                self.hit_sum += hits
+                self.num_hit_recs += 1
+
+    def finalCheck(self):
+        if not self.hadData:
+            self.fail("Got no waveform data!")
+        if self.num_hit_recs == 0:
+            self.fail("Had no F records in data!")
+        avg = self.hit_sum / float(self.num_hit_recs)
+        if avg <= 0.0:
+            self.fail("Average hit rate in F records was zero!")
+        print "LCtype %d hits %d recs %d avg %2.2f" % (self.LcTypeForFRecord,
+                                                       self.hit_sum,
+                                                       self.num_hit_recs,
+                                                       avg)
+
+
+
+class HLCFRecordsTest(LCFRecordsTest):
+    """
+    Test F record LC hit counters in (default) HLC mode
+    """
+    LcTypeForFRecord = LCFRecordsTest.HLC
+
+class SLCFRecordsTest(LCFRecordsTest):
+    """
+    Test F record LC hit counters in SLC mode
+    """
+    LcTypeForFRecord = LCFRecordsTest.SLC
+
+            
+
 ################################### HIGH-LEVEL TESTING LOGIC ###############################
             
-class TestNotFoundException(Exception): pass
+class TestNotFoundException(Exception):
+    pass
 
 class TestingSet:
     "Class for running multiple tests on a group of DOMs in parallel"
@@ -2079,7 +2170,8 @@ def main():
                         ScalerDeadtimePulserTest,
                         SNTest,
                         SLCOnlyPulserTest,
-                        SLCEngineeringFormatTest])
+                        SLCEngineeringFormatTest,
+                        FRecordsLcTypePrepTest])
 
     if opt.doFlasherTests == "A":
         ListOfTests.extend([FlasherATest])
@@ -2093,7 +2185,7 @@ def main():
         ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, FADCClockPollutionTest,
                             SPEScalerNotZeroTest, SNDeltaSPEHitTest,
                             SLCOnlyHVTest, FADCHistoTest, 
-                            ATWDHistoTest])
+                            ATWDHistoTest, HLCFRecordsTest, SLCFRecordsTest])
     # Post-domapp tests
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,

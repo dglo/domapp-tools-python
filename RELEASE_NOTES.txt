@@ -1,4 +1,5 @@
 Next:
+0003844: Change 'F' monitoring records to report HLC instead of SLC
 0003618: Make test for Iceboot 'reload' command (corresponding to 'versions all')
 ==============================================================
 
