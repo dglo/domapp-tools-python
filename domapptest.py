@@ -1874,10 +1874,10 @@ class LCFRecordsTest(TimedDOMAppTest):
         avg = self.hit_sum / float(self.num_hit_recs)
         if avg <= 0.0:
             self.fail("Average hit rate in F records was zero!")
-        print "LCtype %d hits %d recs %d avg %2.2f" % (self.LcTypeForFRecord,
-                                                       self.hit_sum,
-                                                       self.num_hit_recs,
-                                                       avg)
+        #print "LCtype %d hits %d recs %d avg %2.2f" % (self.LcTypeForFRecord,
+        #                                               self.hit_sum,
+        #                                               self.num_hit_recs,
+        #                                               avg)
 
 
 
