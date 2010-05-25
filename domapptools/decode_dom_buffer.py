@@ -115,6 +115,14 @@ BUF = """
 779120737
 """
 
+
+def printable_byte(b):
+    if b > 31 and b < 127:
+        return chr(b)
+    else:
+        return "[%0X]" % b
+    
+
 def decode_dom_buffer(buf):
     """
     >>> b = decode_dom_buffer(BUF)
@@ -124,11 +132,24 @@ def decode_dom_buffer(buf):
     for n in [int(s_) for s_ in findall(r'(?m)^(\d+)\s*$', buf)]:
         for i in range(4):
             byte = (n >> i*8) & 0xFF
-            if byte > 31:
-                s += chr(byte)
-            else:
-                s += "[%0x]" % byte
+            s += printable_byte(byte)
     return s
+
+
+def printable_string(txt):
+    """
+    >>> printable_string("")
+    ''
+    >>> printable_string("AAA")
+    'AAA'
+    >>> printable_string("AA\001A\177")
+    'AA[1]A[7F]'
+    """
+    ret = ""
+    for c in txt:
+        ret += printable_byte(ord(c))
+    return ret
+
 
 if __name__ == "__main__":
     import doctest

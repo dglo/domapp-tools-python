@@ -11,6 +11,7 @@ from minitimer import *
 from re import search, S, sub
 from random import *
 from struct import pack
+from decode_dom_buffer import printable_string
 
 EAGAIN   = 11    
 
@@ -219,9 +220,10 @@ class MiniDor:
                 # break #<-- put this back to simulate failure
                 return contents
             time.sleep(0.10)
-        raise ExpectStringNotFoundException("Expected string '%s' did not arrive in %d msec: got '%s'" \
-                                            % (expectStr, timeoutMsec,
-                                               sub('\r',' ', sub('\n', ' ', contents))))
+        raise ExpectStringNotFoundException(
+            "Expected string '%s' did not arrive in %d msec: got '%s'" \
+            % (expectStr, timeoutMsec,
+               sub('\r',' ', sub('\n', ' ', printable_string(contents)))))
     
     def writeTimeout(self, fd, msg, timeoutMsec=DEFAULT_TIMEOUT):
         nb0   = len(msg)
