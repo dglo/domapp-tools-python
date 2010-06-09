@@ -13,7 +13,7 @@ from random import *
 from struct import pack
 from decode_dom_buffer import printable_string
 
-EAGAIN   = 11    
+EAGAIN = 11
 
 class ExpectStringNotFoundException(Exception): pass
 class WriteTimeoutException(Exception): pass

@@ -173,6 +173,7 @@ class IcebootSelfReset(DOMTest):
             cs0 = CommStats(self.dor.commStats())
             txt, version = self.dor.icebootReset()
         except ExpectStringNotFoundException, e:
+            discard = self.dor.fpgaRegs()
             cs1 = CommStats(self.dor.commStats())
             self.fail('Did not get expected data back from Iceboot!')
             self.debugMsgs.append(str(e))
