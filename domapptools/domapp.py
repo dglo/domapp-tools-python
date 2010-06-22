@@ -70,6 +70,8 @@ DATA_ACC_GET_COMP_MODE          = 27
 DATA_ACC_GET_SN_DATA            = 28
 DATA_ACC_RESET_MONI_BUF         = 29
 DATA_ACC_MONI_AVAIL             = 30
+DATA_ACC_SET_LBM_BIT_DEPTH      = 32
+DATA_ACC_GET_LBM_SIZE           = 33
 DATA_ACC_HISTO_CHARGE_STAMPS    = 34
 DATA_ACC_SELECT_ATWD            = 35
 DATA_ACC_GET_F_MONI_RATE_TYPE   = 36
@@ -531,3 +533,9 @@ class DOMApp:
         """
         self.sendMsg(DATA_ACCESS, DATA_ACC_SET_F_MONI_RATE_TYPE, data=pack('b', type))
     
+    def set_lbm_buffer_depth(self, bits):
+        self.sendMsg(DATA_ACCESS, DATA_ACC_SET_LBM_BIT_DEPTH, data=pack('b', bits))
+
+    def get_lbm_buffer_depth(self):
+        return unpack(">L", self.sendMsg(DATA_ACCESS, DATA_ACC_GET_LBM_SIZE))[0]
+        

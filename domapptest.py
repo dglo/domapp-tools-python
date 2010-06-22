@@ -759,6 +759,23 @@ class GetDomappRelease(SimpleDomAppTest):
         except Exception, e:
             self.fail(exc_string())
 
+
+class LBMBufferSizeTest(SimpleDomAppTest):
+    """
+    Make sure LBM buffer size message works
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            depth = domapp.get_lbm_buffer_depth()
+            assert(depth==1<<21)
+            domapp.set_lbm_buffer_depth(24)
+            depth = domapp.get_lbm_buffer_depth()
+            assert(depth==1<<24)
+        except Exception, e:
+            self.fail(exc_string())
+            
+
 class DOMIDTest(SimpleDomAppTest):
     """
     Get DOM ID from domapp
@@ -2172,7 +2189,8 @@ def main():
                         SNTest,
                         SLCOnlyPulserTest,
                         SLCEngineeringFormatTest,
-                        FRecordsLcTypePrepTest])
+                        FRecordsLcTypePrepTest,
+                        LBMBufferSizeTest])
 
     if opt.doFlasherTests == "A":
         ListOfTests.extend([FlasherATest])
