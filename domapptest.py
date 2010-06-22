@@ -777,6 +777,9 @@ class LBMBufferSizeTest(SimpleDomAppTest):
 
             
 class DomappUnitTests(SimpleDomAppTest):
+    """
+    Run on-board unit tests
+    """
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         try:
