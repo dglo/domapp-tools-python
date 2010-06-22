@@ -86,6 +86,7 @@ EXPCONTROL_GET_PEDESTAL_AVERAGES    = 20
 EXPCONTROL_BEGIN_FB_RUN             = 27
 EXPCONTROL_END_FB_RUN               = 28
 EXPCONTROL_CHANGE_FB_SETTINGS       = 29
+EXPCONTROL_RUN_UNIT_TESTS           = 30
 
 # HAL DACs and ADCs
 DAC_ATWD0_TRIGGER_BIAS          = 0
@@ -352,6 +353,9 @@ class DOMApp:
     def endRun(self):
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_END_RUN)
 
+    def unitTests(self):
+        self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_RUN_UNIT_TESTS)
+        
     def getSupernovaData(self):
         return self.sendMsg(DATA_ACCESS, DATA_ACC_GET_SN_DATA)
    
