@@ -1292,9 +1292,8 @@ class TimedDOMAppTest(DOMAppHVTest):
     TRY TO USE THIS CLASS FOR NEW TESTS, AND BACK-PORT THE OLD ONES AS TIME ALLOWS!
     !!!!!!!!
     """
-
     targetHV = None
-    
+                              
     def resetDomapp(self, domapp):
         """
         Reset method (generic)
@@ -1332,6 +1331,13 @@ class TimedDOMAppTest(DOMAppHVTest):
         Do every second (e.g. poll domapp)
         """
         return False # Don't end test early
+
+    def runcore(self, domapp):
+        t = MiniTimer(self.runLength*1000)
+        while not t.expired():
+            if self.interval(domapp):
+                break
+            time.sleep(1)
         
     def run(self, fd):
         """
@@ -1347,36 +1353,33 @@ class TimedDOMAppTest(DOMAppHVTest):
             self.cleanup(domapp)
             return
 
-        t = MiniTimer(self.runLength*1000)
-        while not t.expired():
-            try:
-                if self.interval(domapp): break
-                time.sleep(1)
-            except Exception, e:
-                self.fail(exc_string()) # Might get overridden in post-checks
-                self.endRun(domapp)
-                self.cleanup(domapp)
-                break
+        splat = False
+        try:
+            self.runcore(domapp)
+        except Exception, e:
+            self.fail(exc_string())
+            splat = True
 
         try:
             self.endRun(domapp)
         except Exception, e:
             self.fail(exc_string())
-            self.cleanup(domapp)
-            return
+            splat = True
             
         try:
             self.cleanup(domapp)
         except Exception, e:
             self.fail(exc_string())
-            return
+            splat = True
 
-        self.finalCheck()
+        if not splat:
+            self.finalCheck()
 
     def finalCheck(self):
         """
         Final checks on data go here
         """
+
 
 class FADCClockPollutionTest(TimedDOMAppTest):
     """
@@ -1427,6 +1430,7 @@ class FADCClockPollutionTest(TimedDOMAppTest):
             self.fail("Alternating sum abs(%d) > %d!" % (sum, MAX_OSC))
                                                     
     def interval(self, domapp): return True # Short-circuit 'running' phase - do everything in prep
+
     
 class PedestalStabilityTest(TimedDOMAppTest):
     """
@@ -1856,7 +1860,7 @@ class FRecordsLcTypePrepTest(TimedDOMAppTest):
     def interval(self, domapp): # Skip actual data taking
         return True
     
-    
+
 class LCFRecordsTest(TimedDOMAppTest):
     """
     Make sure one can set HLC/SLC 'F' records and that the behavior is correct; basically,
@@ -1918,13 +1922,117 @@ class HLCFRecordsTest(LCFRecordsTest):
     """
     LcTypeForFRecord = LCFRecordsTest.HLC
 
+
 class SLCFRecordsTest(LCFRecordsTest):
     """
     Test F record LC hit counters in SLC mode
     """
     LcTypeForFRecord = LCFRecordsTest.SLC
 
+
+def lbm_moni_warning_pointers(msg):
+    """
+    Detect LBM overflow in message and extract relevant pointers
+    """
+    if 'LBM OVER' in msg:
+        m = search('pointer=(.+?) lbmp=(.+)', msg)
+        assert(m)
+        wrptr = int(m.group(1), 16)
+        rdptr = int(m.group(2), 16)
+        return wrptr, rdptr
+    return None, None
+
+
+class LBMOverflowTest(TimedDOMAppTest):
+    """
+    Verify correct behavior when hardware wraps LBM
+    """
+    def prepDomapp(self, domapp):
+        """
+        Set up delta-compression, beacon hits with high initial rate
+        to fill LBM quickly (changed in runcore()).
+        """
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.setTriggerMode(2)            
+        domapp.setPulser(mode=BEACON, rate=40000)
+        self.had_wf = False
+
+    def runcore(self, domapp):
+        """
+        Watch what happens when LBM pointers reach the end of the
+        physical address space.  LBM overflow messages should not
+        occur here.  prepDomapp() has started the filling of LBM
+        before we get to this point.  We wait for LBM to get nearly
+        full, turn down the beacon rate, pull out hits as quickly as
+        possible, let the LBM wrap occur, and check for overflow
+        warnings in the monitoring stream.
+        """
+        start_of_top_region  = 0xFD00000
+        end_of_bottom_region = 0x0008000
+
+        # Wait for LBM to get close to filling up
+        self.debugMsgs.append("Filling LBM...")
+        while True:
+            wrptr = domapp.get_lbm_ptrs()[0]
+            if wrptr > start_of_top_region:
+                break
+        self.debugMsgs.append("Got to tail end of range: 0x%08x" % wrptr)
+
+        # Slow down pulser to slowly approach end of range
+        domapp.setPulser(mode=BEACON, rate=200)
+
+        # Trigger initial LBM moni warning, and discard:
+        wf_data = domapp.getWaveformData()
+        found_initial_warning = False
+        moni = getLastMoniMsgs(domapp)
+        for msg in moni:
+            wr, rd = lbm_moni_warning_pointers(msg)
+            if wr is not None and rd is not None:
+                found_initial_warning = True
+                assert(rd == 0)
+        assert(found_initial_warning)
+
+        # Collect data until wrap occurs
+        i = 0
+        while True:
+            wf_data = domapp.getWaveformData() # Trigger LBM check
+            if len(wf_data) > 0:
+                self.had_wf = True
+            wrptr, rdptr = domapp.get_lbm_ptrs()
+
+            if not i%100:
+                self.debugMsgs.append("wr: %08x  rd: %08x" % (wrptr, rdptr))
+            i += 1
+
+            # Stop when we have wrapped:
+            if wrptr < start_of_top_region:
+                break
             
+        # Collect more WF data to make sure LBM message is triggered
+        while len(domapp.getWaveformData()) == 0:
+            pass
+
+        # Collect resulting LBM warnings, if any:
+        found_last_lbm_warnings = False
+        while True:
+            moni = getLastMoniMsgs(domapp)
+            for msg in moni:
+                self.debugMsgs.append(msg)
+                wr, rd = lbm_moni_warning_pointers(msg)
+                if wr is not None and rd is not None:
+                    self.debugMsgs.append("OVFL 0x%08x 0x%08x" % (wr, rd))
+                    found_last_lbm_warnings = True
+            wrptr, rdptr = domapp.get_lbm_ptrs()
+            if wrptr > end_of_bottom_region:
+                break
+        if found_last_lbm_warnings:
+            self.fail("LBM warnings found, possible LBM wrap issue!")
+
+    def finalCheck(self):
+        if not self.had_wf:
+            self.fail("No waveform data received!!!")
 
 ################################### HIGH-LEVEL TESTING LOGIC ###############################
             
@@ -2204,6 +2312,7 @@ def main():
                         SLCEngineeringFormatTest,
                         FRecordsLcTypePrepTest,
                         LBMBufferSizeTest,
+                        LBMOverflowTest,
                         DomappUnitTests])
 
     if opt.doFlasherTests == "A":

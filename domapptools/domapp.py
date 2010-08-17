@@ -76,6 +76,7 @@ DATA_ACC_HISTO_CHARGE_STAMPS    = 34
 DATA_ACC_SELECT_ATWD            = 35
 DATA_ACC_GET_F_MONI_RATE_TYPE   = 36
 DATA_ACC_SET_F_MONI_RATE_TYPE   = 37
+DATA_ACC_GET_LBM_PTRS           = 38
 
 # EXPERIMENT_CONTROL messages subtypes
 EXPCONTROL_BEGIN_RUN                = 12
@@ -542,4 +543,7 @@ class DOMApp:
 
     def get_lbm_buffer_depth(self):
         return unpack(">L", self.sendMsg(DATA_ACCESS, DATA_ACC_GET_LBM_SIZE))[0]
+
+    def get_lbm_ptrs(self):
+        return unpack(">LL", self.sendMsg(DATA_ACCESS, DATA_ACC_GET_LBM_PTRS))
         
