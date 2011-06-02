@@ -768,6 +768,9 @@ class LBMBufferSizeTest(SimpleDomAppTest):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         try:
             depth = domapp.get_lbm_buffer_depth()
+            assert(depth==1<<24)
+            domapp.set_lbm_buffer_depth(21)
+            depth = domapp.get_lbm_buffer_depth()
             assert(depth==1<<21)
             domapp.set_lbm_buffer_depth(24)
             depth = domapp.get_lbm_buffer_depth()
