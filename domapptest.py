@@ -28,7 +28,7 @@ class RepeatedTestChangesStateException(Exception): pass
 class UnsupportedTestException(Exception):          pass
 class TestNotHVTestException(Exception):            pass
 
-class DOMTest:
+class DOMTest(object):
     STATE_ICEBOOT    = "ib"
     STATE_DOMAPP     = "da"
     STATE_CONFIGBOOT = "cb"
@@ -72,12 +72,6 @@ class DOMTest:
         return str
 
     def clearDebugTxt(self): self.debugMsgs = []
-    
-    def name(self):
-        str = repr(self)
-        m = search(r'\.(\S+) instance', str)
-        if(m): return m.group(1)
-        return str
     
     def run(self, fd): pass
 
@@ -1195,14 +1189,16 @@ class SLCOnlyTest(DOMAppTest):
                 pass
             self.appendMoni(domapp)
             return
+
         
-class SLCOnlyPulserTest(DOMAppTest, SLCOnlyTest):
+class SLCOnlyPulserTest(SLCOnlyTest, DOMAppTest):
     """
     Test 'SLC-Only' mode where SLC is required and LC is "off" (compression
     on.  Requirement is to get some non-beacon hits but NO waveforms - just
     delta-compression headers.  This test runs with front end pulser (no HV).
     """
     def run(self, fd): SLCOnlyTest.run(self, fd)
+
             
 class SLCOnlyHVTest(DOMAppHVTest, SLCOnlyTest):
     """
@@ -1211,6 +1207,7 @@ class SLCOnlyHVTest(DOMAppHVTest, SLCOnlyTest):
     delta-compression headers.  This test runs with real SPEs with HV on.
     """
     def run(self, fd): SLCOnlyTest.run(self, fd, doHV=True)
+
     
 class SNDeltaSPEHitTest(DOMAppHVTest):
     """
@@ -1529,23 +1526,46 @@ class NoHVPedestalStabilityTest(PedestalStabilityTest):
     """
     targetHV = None
     
+
 class PedestalMonitoringTest(SimpleDomAppTest):
     """
     Make sure pedestal monitoring records are present and well-formatted when
     pedestal generation occurs
     """
+    def __init__(self, *args, **kwargs):
+        self._biases = {}
+        super(PedestalMonitoringTest, self).__init__(*args, **kwargs)
+        
+    def do_peds(self, domapp, set_bias=None):
+        if set_bias:
+            self._biases = set_bias
+        domapp.collectPedestals(100, 100, 200, set_bias)
+        
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         pedcount = 0
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
-            domapp.collectPedestals(100, 100, 200)
+            self.do_peds(domapp)
             mlist = getLastMoniMsgs(domapp)
             for m in mlist:
-                s = search(r'PED', m)
-                if s: pedcount += 1
                 self.debugMsgs.append(m)
+                s = search(r'PED-ATWD (?P<atwd>\S+) CH (?P<ch>\d+)--'
+                           r'(?P<trials>\d+) trials, bias (?P<bias>\d+)', m)
+                if s:
+                    pedcount += 1
+                    if self._biases:
+                        atwdnum = s.group("atwd") == "B" and 1 or 0
+                        channel = int(s.group("ch"))
+                        if channel == 3:
+                            continue
+                        bias_wanted = self._biases["atwd%s" % atwdnum][channel]
+                        bias_found = int(s.group("bias"))
+                        if bias_wanted != bias_found:
+                            self.fail("Expected programmed bias %d, got %d!!!" % \
+                                      (bias_wanted, bias_found))
+                            
             
         except Exception, e:
             self.fail(exc_string())
@@ -1553,9 +1573,19 @@ class PedestalMonitoringTest(SimpleDomAppTest):
             return
 
         if pedcount < 8:
-            self.fail("Insufficient (%d) pedestal monitoring records" % pedcount)
+            self.fail("Insufficient (%d) pedestal monitoring records" % \
+                      pedcount)
             self.appendMoni(domapp)
-        
+
+
+class PedestalSetBiasTest(PedestalMonitoringTest):
+    def do_peds(self, domapp):
+        super(self.__class__, self).do_peds(domapp,
+                                            set_bias = { 'atwd0': [100,200,300],
+                                                         'atwd1': [400,500,600] })
+    def run(self, fd):
+        super(self.__class__, self).run(fd)
+
     
 class DeltaCompressionBeaconTest(DOMAppTest):
     """
@@ -2164,7 +2194,8 @@ class TestingSet:
             if not doQuiet or test.result != "PASS":
                 print "%s%s%s %s %s->%s %s %s%s: %s %s" % (c,w,d, tstart, test.startState,
                                                            test.endState, dt, runLenStr,
-                                                           test.name(), test.result, test.summary)
+                                                           test.__class__.__name__, test.result,
+                                                           test.summary)
             if test.result == "PASS":
                 self.numpassed += 1
             else:
@@ -2244,7 +2275,7 @@ def main():
     p.add_option("-o", "--only-test",
                  action="store_true",
                  dest="doOnly",       help="Do same-state tests only when specified by -n option")
-    
+
     p.add_option("-n", "--repeat-count",
                  action="append",     type="string",    nargs=2,
                  dest="repeatCount",  help="Set # of times to run a test, "   + \
@@ -2308,6 +2339,7 @@ def main():
                         GetDomappRelease,
                         MessageSizePulserTest,
                         PedestalMonitoringTest,
+                        PedestalSetBiasTest,
                         NoHVPedestalStabilityTest,
                         ScalerDeadtimePulserTest,
                         SNTest,

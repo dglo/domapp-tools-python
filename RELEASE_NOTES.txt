@@ -1,5 +1,6 @@
 Next:
-0004922 (DOM-MB): Change LBM default size
+0004877 (dom-mb): Set average of pedestal pattern from surface
+0004922 (dom-mb): Change LBM default size
 0004138: Add tests for LBM overflow wrap bug
 0004064: Add simple unit tests to be run on request by surface
 0004063: set LBM buffer size message doesn't return a proper status

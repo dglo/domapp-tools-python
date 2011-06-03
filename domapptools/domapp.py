@@ -402,9 +402,18 @@ class DOMApp:
                      data=pack(">3I", hwInt, cfInt, fastInt)
                      )
 
-    def collectPedestals(self, natwd0=100, natwd1=100, nfadc=100):
+    def collectPedestals(self, natwd0=100, natwd1=100, nfadc=100, set_bias=None):
+        if set_bias is None:
+            data = pack(">3I", natwd0, natwd1, nfadc)
+        else:
+            atwd0 = set_bias["atwd0"]
+            atwd1 = set_bias["atwd1"]
+            data = pack(">3I6H", natwd0, natwd1, nfadc,
+                        atwd0[0], atwd0[1], atwd0[2],
+                        atwd1[0], atwd1[1], atwd1[2])
+            
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_DO_PEDESTAL_COLLECTION,
-                     data=pack(">3I", natwd0, natwd1, nfadc)
+                     data=data
                      )
 
     def getPedestalAverages(self):
