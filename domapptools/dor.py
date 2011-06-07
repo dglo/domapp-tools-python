@@ -4,6 +4,8 @@
 DOR Driver interface class
 
 $Id: dor.py,v 1.20 2006/01/02 20:16:35 kael Exp $
+
+Most of this is from Kael.  JJ 2011
 """
 
 import os, sys
@@ -355,14 +357,3 @@ class Power:
         """Turn off power to a twisted pair."""
         self.fpwr.write("off\n")
         self.fpwr.flush()
-
-
-#Kael Hanson
-#University of Wisconsin - Madison
-#222 West Washington Ave
-#Suite 500
-#Madison, WI 53703
-#Tel: (608) 890-0540
-#kael.hanson@gmail.com
-
-

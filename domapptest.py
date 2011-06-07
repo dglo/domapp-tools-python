@@ -206,6 +206,7 @@ class CheckIceboot(DOMTest):
             self.fail("check for iceboot prompt failed")
             self.debugMsgs.append(txt)
 
+
 class SoftbootCycle(DOMTest):
     """
     Verify softboot behavior, in particular the following sequence:
@@ -267,6 +268,60 @@ class SoftbootCycle(DOMTest):
             self.debugMsgs.append(txt)
             return
 
+
+class ATWDDeadtimeTest(DOMTest):
+    """
+    Test ATWD deadtime in the case where SLC is selected.  See
+    https://bugs.icecube.wisc.edu/view.php?id=4925.  This test is in
+    Forth/Iceboot because it's a simple adaptation of Thorsten's test
+    (see Mantis issue notes).
+    """
+    def __init__(self, card, wire, dom, dor):
+        DOMTest.__init__(self, card, wire, dom, dor,
+                         start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ICEBOOT)
+
+    def run(self, fd):
+        self.dor.writeTimeout(fd,r"""\
+             s" domapp.sbi.gz" find if gunzip fpga endif
+             \ --Set frontend pulser and discriminator
+             9 1000 writeDAC
+             11 1000 writeDAC
+             \ -- enable rate meter to test discriminator and ATWD dead time
+             $301 $90000480 !
+             \ -- enable calibration pulser at ~610Hz
+             $0a001002 $90000460 !
+             \ -- check we [have] discriminator counts
+             $90000484 @ . drop
+             \ -- enable DAQ(one ATWD! [else you get ping-pong]; LC enabled)
+             $00010003 $90000410 !
+             \ -- enable trigger
+             $1 $90000400 !
+             \ -- check LBM pointer
+             $90000424 @ . drop
+             \ DONE
+             """.replace('\n','\r\n'))
+        txt1 = self.dor.readExpect(fd, 'DONE.+?>')
+        
+        time.sleep(4) # wait a bit [>3 seconds] and read ATWD dead
+                      # time (should be ~107500; ~ 4point4 us per aborted launch)
+
+        self.dor.writeTimeout(fd,"$90000490 @ . drop\r\n")
+        txt2 = self.dor.readExpect(fd, '\d+\s*>')
+        match = search("(\d+)\s*>", txt2)
+        assert match
+        deadtime = int(match.group(1))
+        MAX_DEADTIME = 120000
+        if deadtime >= MAX_DEADTIME:
+            self.fail("ATWD deadtime too high (got %d, wanted < %d)" %\
+                      (deadtime, MAX_DEADTIME))
+            self.debugMsgs.append(txt1+txt2)
+        self.dor.softboot()
+        ok, txt = self.dor.isInIceboot2()
+        if not ok:
+            self.fail("Softboot transition after test failed!")
+            self.debugMsgs.append(txt)
+                        
+    
 class IcebootToConfigboot(DOMTest):
     """
     Make sure transition from iceboot to configboot succeeds
@@ -285,6 +340,7 @@ class IcebootToConfigboot(DOMTest):
                 self.fail("check for iceboot prompt failed")
                 self.debugMsgs.append(txt)
 
+
 class CheckConfigboot(DOMTest):
     """
     Check that I'm really in configboot when I think I am
@@ -297,6 +353,7 @@ class CheckConfigboot(DOMTest):
         if not ok:
             self.fail("check for iceboot prompt failed")
             self.debugMsgs.append(txt)
+
 
 class IcebootToEcho(DOMTest):
     """
@@ -2322,6 +2379,7 @@ def main():
                    CheckConfigboot,
                    ConfigbootToIceboot,
                    CheckIceboot,
+                   ATWDDeadtimeTest,
                    IcebootSelfReset,
                    SoftbootCycle,
                    IcebootToDomapp]

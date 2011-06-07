@@ -1,4 +1,5 @@
 Next:
+0004925 (dom-mb): Use (and test) Thorsten's new DOMApp FPGA (build 674)
 0004877 (dom-mb): Set average of pedestal pattern from surface
 0004922 (dom-mb): Change LBM default size
 0004138: Add tests for LBM overflow wrap bug
