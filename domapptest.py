@@ -8,6 +8,7 @@ import time, threading, os, sys
 from datetime import datetime
 
 from re import search, sub
+from pprint import PrettyPrinter
 
 from domapptools.dor import *
 from domapptools.exc_string import exc_string
@@ -15,6 +16,7 @@ from domapptools.domapp import *
 from domapptools.MiniDor import *
 from domapptools.DeltaHit import *
 from domapptools.EngHit import *
+from domapptools.decode_dom_buffer import decode_dom_buffer
 
 from os.path import exists
 from math import sqrt
@@ -26,7 +28,7 @@ class RepeatedTestChangesStateException(Exception): pass
 class UnsupportedTestException(Exception):          pass
 class TestNotHVTestException(Exception):            pass
 
-class DOMTest:
+class DOMTest(object):
     STATE_ICEBOOT    = "ib"
     STATE_DOMAPP     = "da"
     STATE_CONFIGBOOT = "cb"
@@ -70,12 +72,6 @@ class DOMTest:
         return str
 
     def clearDebugTxt(self): self.debugMsgs = []
-    
-    def name(self):
-        str = repr(self)
-        m = search(r'\.(\S+) instance', str)
-        if(m): return m.group(1)
-        return str
     
     def run(self, fd): pass
 
@@ -155,6 +151,48 @@ class IcebootToDomapp(DOMTest):
             # FIXME - test w/ domapp message here
             pass
 
+iceboot_versions = {}
+
+class IcebootSelfReset(DOMTest):
+    """
+    Try 'reset' command inside Iceboot to get 'Iceboot (...) build...'
+    information, like 'versions' command does.
+    """
+    def __init__(self, card, wire, dom, dor):
+        DOMTest.__init__(self, card, wire, dom, dor,
+                         start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ICEBOOT)
+
+    def run(self, fd):
+        try:
+            cs0 = CommStats(self.dor.commStats())
+            txt, version = self.dor.icebootReset()
+        except ExpectStringNotFoundException, e:
+            discard = self.dor.fpgaRegs()
+            cs1 = CommStats(self.dor.commStats())
+            self.fail('Did not get expected data back from Iceboot!')
+            self.debugMsgs.append(str(e))
+            self.debugMsgs.append(exc_string())
+            pp = PrettyPrinter(indent=4)
+            self.debugMsgs.append('\nDifference in commstats:\n%s\n' % pp.pformat(cs1-cs0))
+            try:
+                txt = self.dor.iceboot_get_buffer_dump()
+                buffer = decode_dom_buffer(txt)
+                self.debugMsgs.append('\nDOM transmit buffer:\n%s\n' % buffer)
+            except Exception, e:
+                self.debugMsgs.append(str(e))
+            return
+        cwd = "%s%s%s" % (self.card, self.wire, self.dom)
+        global iceboot_versions
+        if cwd not in iceboot_versions:
+            iceboot_versions[cwd] = version
+        else:
+            if iceboot_versions[cwd] != version:
+                self.fail('Version from Iceboot not correct!')
+                self.debugMsgs.append("Expected '%s', got '%s'" % \
+                                      (iceboot_versions[cwd], version))
+        self.summary = version
+        
+    
 class CheckIceboot(DOMTest):
     """
     Make sure I'm in iceboot when I think I should be
@@ -167,6 +205,7 @@ class CheckIceboot(DOMTest):
         if not ok:
             self.fail("check for iceboot prompt failed")
             self.debugMsgs.append(txt)
+
 
 class SoftbootCycle(DOMTest):
     """
@@ -229,6 +268,60 @@ class SoftbootCycle(DOMTest):
             self.debugMsgs.append(txt)
             return
 
+
+class ATWDDeadtimeTest(DOMTest):
+    """
+    Test ATWD deadtime in the case where SLC is selected.  See
+    https://bugs.icecube.wisc.edu/view.php?id=4925.  This test is in
+    Forth/Iceboot because it's a simple adaptation of Thorsten's test
+    (see Mantis issue notes).
+    """
+    def __init__(self, card, wire, dom, dor):
+        DOMTest.__init__(self, card, wire, dom, dor,
+                         start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ICEBOOT)
+
+    def run(self, fd):
+        self.dor.writeTimeout(fd,r"""\
+             s" domapp.sbi.gz" find if gunzip fpga endif
+             \ --Set frontend pulser and discriminator
+             9 1000 writeDAC
+             11 1000 writeDAC
+             \ -- enable rate meter to test discriminator and ATWD dead time
+             $301 $90000480 !
+             \ -- enable calibration pulser at ~610Hz
+             $0a001002 $90000460 !
+             \ -- check we [have] discriminator counts
+             $90000484 @ . drop
+             \ -- enable DAQ(one ATWD! [else you get ping-pong]; LC enabled)
+             $00010003 $90000410 !
+             \ -- enable trigger
+             $1 $90000400 !
+             \ -- check LBM pointer
+             $90000424 @ . drop
+             \ DONE
+             """.replace('\n','\r\n'))
+        txt1 = self.dor.readExpect(fd, 'DONE.+?>')
+        
+        time.sleep(4) # wait a bit [>3 seconds] and read ATWD dead
+                      # time (should be ~107500; ~ 4point4 us per aborted launch)
+
+        self.dor.writeTimeout(fd,"$90000490 @ . drop\r\n")
+        txt2 = self.dor.readExpect(fd, '\d+\s*>')
+        match = search("(\d+)\s*>", txt2)
+        assert match
+        deadtime = int(match.group(1))
+        MAX_DEADTIME = 120000
+        if deadtime >= MAX_DEADTIME:
+            self.fail("ATWD deadtime too high (got %d, wanted < %d)" %\
+                      (deadtime, MAX_DEADTIME))
+            self.debugMsgs.append(txt1+txt2)
+        self.dor.softboot()
+        ok, txt = self.dor.isInIceboot2()
+        if not ok:
+            self.fail("Softboot transition after test failed!")
+            self.debugMsgs.append(txt)
+                        
+    
 class IcebootToConfigboot(DOMTest):
     """
     Make sure transition from iceboot to configboot succeeds
@@ -247,6 +340,7 @@ class IcebootToConfigboot(DOMTest):
                 self.fail("check for iceboot prompt failed")
                 self.debugMsgs.append(txt)
 
+
 class CheckConfigboot(DOMTest):
     """
     Check that I'm really in configboot when I think I am
@@ -259,6 +353,7 @@ class CheckConfigboot(DOMTest):
         if not ok:
             self.fail("check for iceboot prompt failed")
             self.debugMsgs.append(txt)
+
 
 class IcebootToEcho(DOMTest):
     """
@@ -321,7 +416,7 @@ class EchoCommResetTest(DOMTest):
             
 ############################## DOMAPP TEST BASE CLASSES ############################
             
-class QuickDOMAppTest(DOMTest):
+class SimpleDomAppTest(DOMTest):
     "Short tests specific to domapp - no run length specified"
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
@@ -373,7 +468,7 @@ class DOMAppTest(DOMTest):
             hvadc, hvdac = domapp.queryHV()
             self.debugMsgs.append("HV: read %d V (ADC) %d V (DAC)" % (hvadc/2,hvdac/2))
             if abs(hvadc-hv*2) <= HV_TOLERANCE: return
-        raise Exception("HV deviates too much from set value!")
+        raise Exception("HV deviates too much from set value (got %s, wanted %s)!" % (hvadc, hv*2))
     
     def turnOffHV(self, domapp):
         """
@@ -441,7 +536,7 @@ class ChargeStampHistoTest(DOMAppHVTest):
                 mlist = getLastMoniMsgs(domapp)
                 for m in mlist:
                     if doATWD:
-                        s1 = re.search('ATWD CS (\S+) (\d+)--(\d+) entries: (.+)', m)
+                        s1 = search('ATWD CS (\S+) (\d+)--(\d+) entries: (.+)', m)
                         if s1:
                             chip    = s1.group(1)
                             chan    = int(s1.group(2))
@@ -451,7 +546,7 @@ class ChargeStampHistoTest(DOMAppHVTest):
                             for x in map(int, rest.split()):
                                 if x > 0: gotATWDCounts[chip] = True
                     else:
-                        s1 = re.search('FADC CS--(\d+) entries: (.+)', m)
+                        s1 = search('FADC CS--(\d+) entries: (.+)', m)
                         if s1:
                             entries = s1.group(1)
                             rest    = s1.group(2)
@@ -704,7 +799,7 @@ def getLastMoniMsgs(domapp):
 
 ################################### SPECIFIC TESTS ###############################
 
-class GetDomappRelease(QuickDOMAppTest):
+class GetDomappRelease(SimpleDomAppTest):
     """
     Ask domapp for its release string
     """
@@ -715,7 +810,40 @@ class GetDomappRelease(QuickDOMAppTest):
         except Exception, e:
             self.fail(exc_string())
 
-class DOMIDTest(QuickDOMAppTest):
+
+class LBMBufferSizeTest(SimpleDomAppTest):
+    """
+    Make sure LBM buffer size message works
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            depth = domapp.get_lbm_buffer_depth()
+            assert(depth==1<<24)
+            domapp.set_lbm_buffer_depth(21)
+            depth = domapp.get_lbm_buffer_depth()
+            assert(depth==1<<21)
+            domapp.set_lbm_buffer_depth(24)
+            depth = domapp.get_lbm_buffer_depth()
+            assert(depth==1<<24)
+        except Exception, e:
+            self.fail(exc_string())
+
+            
+class DomappUnitTests(SimpleDomAppTest):
+    """
+    Run on-board unit tests
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            domapp.unitTests()
+        except Exception, e:
+            self.appendMoni(domapp)
+            self.fail(exc_string())
+            
+    
+class DOMIDTest(SimpleDomAppTest):
     """
     Get DOM ID from domapp
     """
@@ -796,7 +924,7 @@ class ScalerDeadtimePulserTest(DOMAppTest):
         while not t.expired():
             mlist = getLastMoniMsgs(domapp)
             for m in mlist:
-                s1 = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
+                s1 = search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
                 if s1:
                     deadtime = int(s1.group(4))
                     if(deadtime <= 0):
@@ -883,8 +1011,8 @@ class SPEScalerNotZeroTest(DOMAppHVTest):
                 mlist = getLastMoniMsgs(domapp)
                 for m in mlist:
                     self.debugMsgs.append(m)
-                    s1 = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
-                    s2 = re.search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
+                    s1 = search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
+                    s2 = search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
                     if s1:
                         gotMoniFast = True
                         if fastVirgin: fastVirgin = False # Skip first record which might be smaller or zero
@@ -993,8 +1121,8 @@ class FastMoniTestHV(DOMAppHVTest):
             gotF     = False
             gotHW    = False
             for m in mlist:
-                s1 = re.search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
-                s2 = re.search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
+                s1 = search(r'^F (\d+) (\d+) (\d+) (\d+)$', m)
+                s2 = search(r'^\[HW EVT .+? (\d+) (\d+)\]', m)
                 if s1:
                     gotF = True
                     fastMoniRecordCount += 1
@@ -1052,7 +1180,7 @@ class FastMoniTestHV(DOMAppHVTest):
         
         mlist = getLastMoniMsgs(domapp)
         for m in mlist:
-            s1 = re.search(r'^F \d+ \d+ (\d+) \d+$', m)
+            s1 = search(r'^F \d+ \d+ (\d+) \d+$', m)
             if s1:
                 hitsMonitored += int(s1.group(1))
                             
@@ -1118,14 +1246,16 @@ class SLCOnlyTest(DOMAppTest):
                 pass
             self.appendMoni(domapp)
             return
+
         
-class SLCOnlyPulserTest(DOMAppTest, SLCOnlyTest):
+class SLCOnlyPulserTest(SLCOnlyTest, DOMAppTest):
     """
     Test 'SLC-Only' mode where SLC is required and LC is "off" (compression
     on.  Requirement is to get some non-beacon hits but NO waveforms - just
     delta-compression headers.  This test runs with front end pulser (no HV).
     """
     def run(self, fd): SLCOnlyTest.run(self, fd)
+
             
 class SLCOnlyHVTest(DOMAppHVTest, SLCOnlyTest):
     """
@@ -1134,6 +1264,7 @@ class SLCOnlyHVTest(DOMAppHVTest, SLCOnlyTest):
     delta-compression headers.  This test runs with real SPEs with HV on.
     """
     def run(self, fd): SLCOnlyTest.run(self, fd, doHV=True)
+
     
 class SNDeltaSPEHitTest(DOMAppHVTest):
     """
@@ -1218,9 +1349,8 @@ class TimedDOMAppTest(DOMAppHVTest):
     TRY TO USE THIS CLASS FOR NEW TESTS, AND BACK-PORT THE OLD ONES AS TIME ALLOWS!
     !!!!!!!!
     """
-
     targetHV = None
-    
+                              
     def resetDomapp(self, domapp):
         """
         Reset method (generic)
@@ -1258,6 +1388,13 @@ class TimedDOMAppTest(DOMAppHVTest):
         Do every second (e.g. poll domapp)
         """
         return False # Don't end test early
+
+    def runcore(self, domapp):
+        t = MiniTimer(self.runLength*1000)
+        while not t.expired():
+            if self.interval(domapp):
+                break
+            time.sleep(1)
         
     def run(self, fd):
         """
@@ -1273,37 +1410,33 @@ class TimedDOMAppTest(DOMAppHVTest):
             self.cleanup(domapp)
             return
 
-        t = MiniTimer(self.runLength*1000)
-        failstr = None
-        while not t.expired():
-            try:
-                if self.interval(domapp): break
-                time.sleep(1)
-            except Exception, e:
-                self.fail(exc_string()) # Might get overridden in post-checks
-                self.endRun(domapp)
-                self.cleanup(domapp)
-                break
+        splat = False
+        try:
+            self.runcore(domapp)
+        except Exception, e:
+            self.fail(exc_string())
+            splat = True
 
         try:
             self.endRun(domapp)
         except Exception, e:
             self.fail(exc_string())
-            self.cleanup(domapp)
-            return
+            splat = True
             
         try:
             self.cleanup(domapp)
         except Exception, e:
             self.fail(exc_string())
-            return
+            splat = True
 
-        self.finalCheck()
+        if not splat:
+            self.finalCheck()
 
     def finalCheck(self):
         """
         Final checks on data go here
         """
+
 
 class FADCClockPollutionTest(TimedDOMAppTest):
     """
@@ -1354,6 +1487,7 @@ class FADCClockPollutionTest(TimedDOMAppTest):
             self.fail("Alternating sum abs(%d) > %d!" % (sum, MAX_OSC))
                                                     
     def interval(self, domapp): return True # Short-circuit 'running' phase - do everything in prep
+
     
 class PedestalStabilityTest(TimedDOMAppTest):
     """
@@ -1449,23 +1583,46 @@ class NoHVPedestalStabilityTest(PedestalStabilityTest):
     """
     targetHV = None
     
-class PedestalMonitoringTest(QuickDOMAppTest):
+
+class PedestalMonitoringTest(SimpleDomAppTest):
     """
     Make sure pedestal monitoring records are present and well-formatted when
     pedestal generation occurs
     """
+    def __init__(self, *args, **kwargs):
+        self._biases = {}
+        super(PedestalMonitoringTest, self).__init__(*args, **kwargs)
+        
+    def do_peds(self, domapp, set_bias=None):
+        if set_bias:
+            self._biases = set_bias
+        domapp.collectPedestals(100, 100, 200, set_bias)
+        
     def run(self, fd):
         domapp = DOMApp(self.card, self.wire, self.dom, fd)
         pedcount = 0
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
-            domapp.collectPedestals(100, 100, 200)
+            self.do_peds(domapp)
             mlist = getLastMoniMsgs(domapp)
             for m in mlist:
-                s = re.search(r'PED', m)
-                if s: pedcount += 1
                 self.debugMsgs.append(m)
+                s = search(r'PED-ATWD (?P<atwd>\S+) CH (?P<ch>\d+)--'
+                           r'(?P<trials>\d+) trials, bias (?P<bias>\d+)', m)
+                if s:
+                    pedcount += 1
+                    if self._biases:
+                        atwdnum = s.group("atwd") == "B" and 1 or 0
+                        channel = int(s.group("ch"))
+                        if channel == 3:
+                            continue
+                        bias_wanted = self._biases["atwd%s" % atwdnum][channel]
+                        bias_found = int(s.group("bias"))
+                        if bias_wanted != bias_found:
+                            self.fail("Expected programmed bias %d, got %d!!!" % \
+                                      (bias_wanted, bias_found))
+                            
             
         except Exception, e:
             self.fail(exc_string())
@@ -1473,9 +1630,19 @@ class PedestalMonitoringTest(QuickDOMAppTest):
             return
 
         if pedcount < 8:
-            self.fail("Insufficient (%d) pedestal monitoring records" % pedcount)
+            self.fail("Insufficient (%d) pedestal monitoring records" % \
+                      pedcount)
             self.appendMoni(domapp)
-        
+
+
+class PedestalSetBiasTest(PedestalMonitoringTest):
+    def do_peds(self, domapp):
+        super(self.__class__, self).do_peds(domapp,
+                                            set_bias = { 'atwd0': [100,200,300],
+                                                         'atwd1': [400,500,600] })
+    def run(self, fd):
+        super(self.__class__, self).run(fd)
+
     
 class DeltaCompressionBeaconTest(DOMAppTest):
     """
@@ -1571,7 +1738,7 @@ def getLastModeTypeMsg(mlist):
     """
     mode, type = None, None
     for l in mlist:
-        m = re.search('set_HAL_lc_mode\(LCmode=(\d+), LCtype=(\d+)\)', l)
+        m = search('set_HAL_lc_mode\(LCmode=(\d+), LCtype=(\d+)\)', l)
         if m:
             mode = int(m.group(1))
             type = int(m.group(2))
@@ -1744,6 +1911,7 @@ class ATWDBOnlyTest(ATWDSelectTest):
         if not self.hadAtwdB:
             self.fail("Got no ATWD B data!")
         ATWDSelectTest.finalCheck(self)
+
             
 class ATWDBothTest(ATWDSelectTest):
     """
@@ -1762,9 +1930,204 @@ class ATWDBothTest(ATWDSelectTest):
         ATWDSelectTest.finalCheck(self)
 
 
+class FRecordsLcTypePrepTest(TimedDOMAppTest):
+    """
+    Make sure we can get/set SLC/HLC for F record rate readout
+    """
+    def prepDomapp(self, domapp):
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        # Check default F moni rate type:
+        t, = unpack('b', domapp.get_f_moni_rate_type())
+        if t != 0:
+            self.fail('Unexpected F moni rate type (%d), expected 0!' % t)
+
+        # Test set/get:
+        domapp.set_f_moni_rate_type(1) # SLC
+        t, = unpack('b', domapp.get_f_moni_rate_type())
+        if t != 1:
+            self.fail('Unexpected F moni rate type (%d), expected 1!' % t)
+
+    def interval(self, domapp): # Skip actual data taking
+        return True
+    
+
+class LCFRecordsTest(TimedDOMAppTest):
+    """
+    Make sure one can set HLC/SLC 'F' records and that the behavior is correct; basically,
+    SLC rates should be >= HLC rates.
+    """
+    targetHV = 1200 # Will cause HV to get turned on!
+    HLC = 0
+    SLC = 1
+    
+    def prepDomapp(self, domapp):
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        self.hadData = False
+        self.hit_sum = 0
+        self.num_hit_recs = 0
+        
+        domapp.set_f_moni_rate_type(self.LcTypeForFRecord) # SLC
+        t, = unpack('b', domapp.get_f_moni_rate_type())
+        if t != self.LcTypeForFRecord:
+            self.fail('Unexpected F moni rate type (%d), expected %d!' \
+                      % (t, self.LcTypeForFRecord))
+
+        setDefaultDACs(domapp)
+        domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 500)            
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.setTriggerMode(2)
+        domapp.setLC(mode=1, type=1, source=0, span=1)
+                    
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            self.hadData = True
+        moni = getLastMoniMsgs(domapp)
+        for msg in moni:
+            s = search(r'^F (\d+) (\d+) (\d+) (\d+)$', msg)
+            if s:
+                hits = int(s.group(3))
+                self.hit_sum += hits
+                self.num_hit_recs += 1
+
+    def finalCheck(self):
+        if not self.hadData:
+            self.fail("Got no waveform data!")
+        if self.num_hit_recs == 0:
+            self.fail("Had no F records in data!")
+        avg = self.hit_sum / float(self.num_hit_recs)
+        if avg <= 0.0:
+            self.fail("Average hit rate in F records was zero!")
+        #print "LCtype %d hits %d recs %d avg %2.2f" % (self.LcTypeForFRecord,
+        #                                               self.hit_sum,
+        #                                               self.num_hit_recs,
+        #                                               avg)
+
+
+
+class HLCFRecordsTest(LCFRecordsTest):
+    """
+    Test F record LC hit counters in (default) HLC mode
+    """
+    LcTypeForFRecord = LCFRecordsTest.HLC
+
+
+class SLCFRecordsTest(LCFRecordsTest):
+    """
+    Test F record LC hit counters in SLC mode
+    """
+    LcTypeForFRecord = LCFRecordsTest.SLC
+
+
+def lbm_moni_warning_pointers(msg):
+    """
+    Detect LBM overflow in message and extract relevant pointers
+    """
+    if 'LBM OVER' in msg:
+        m = search('pointer=(.+?) lbmp=(.+)', msg)
+        assert(m)
+        wrptr = int(m.group(1), 16)
+        rdptr = int(m.group(2), 16)
+        return wrptr, rdptr
+    return None, None
+
+
+class LBMOverflowTest(TimedDOMAppTest):
+    """
+    Verify correct behavior when hardware wraps LBM
+    """
+    def prepDomapp(self, domapp):
+        """
+        Set up delta-compression, beacon hits with high initial rate
+        to fill LBM quickly (changed in runcore()).
+        """
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.setTriggerMode(2)            
+        domapp.setPulser(mode=BEACON, rate=40000)
+        self.had_wf = False
+
+    def runcore(self, domapp):
+        """
+        Watch what happens when LBM pointers reach the end of the
+        physical address space.  LBM overflow messages should not
+        occur here.  prepDomapp() has started the filling of LBM
+        before we get to this point.  We wait for LBM to get nearly
+        full, turn down the beacon rate, pull out hits as quickly as
+        possible, let the LBM wrap occur, and check for overflow
+        warnings in the monitoring stream.
+        """
+        start_of_top_region  = 0xFD00000
+        end_of_bottom_region = 0x0008000
+
+        # Wait for LBM to get close to filling up
+        self.debugMsgs.append("Filling LBM...")
+        while True:
+            wrptr = domapp.get_lbm_ptrs()[0]
+            if wrptr > start_of_top_region:
+                break
+        self.debugMsgs.append("Got to tail end of range: 0x%08x" % wrptr)
+
+        # Slow down pulser to slowly approach end of range
+        domapp.setPulser(mode=BEACON, rate=200)
+
+        # Trigger initial LBM moni warning, and discard:
+        wf_data = domapp.getWaveformData()
+        found_initial_warning = False
+        moni = getLastMoniMsgs(domapp)
+        for msg in moni:
+            wr, rd = lbm_moni_warning_pointers(msg)
+            if wr is not None and rd is not None:
+                found_initial_warning = True
+                assert(rd == 0)
+        assert(found_initial_warning)
+
+        # Collect data until wrap occurs
+        i = 0
+        while True:
+            wf_data = domapp.getWaveformData() # Trigger LBM check
+            if len(wf_data) > 0:
+                self.had_wf = True
+            wrptr, rdptr = domapp.get_lbm_ptrs()
+
+            if not i%100:
+                self.debugMsgs.append("wr: %08x  rd: %08x" % (wrptr, rdptr))
+            i += 1
+
+            # Stop when we have wrapped:
+            if wrptr < start_of_top_region:
+                break
+            
+        # Collect more WF data to make sure LBM message is triggered
+        while len(domapp.getWaveformData()) == 0:
+            pass
+
+        # Collect resulting LBM warnings, if any:
+        found_last_lbm_warnings = False
+        while True:
+            moni = getLastMoniMsgs(domapp)
+            for msg in moni:
+                self.debugMsgs.append(msg)
+                wr, rd = lbm_moni_warning_pointers(msg)
+                if wr is not None and rd is not None:
+                    self.debugMsgs.append("OVFL 0x%08x 0x%08x" % (wr, rd))
+                    found_last_lbm_warnings = True
+            wrptr, rdptr = domapp.get_lbm_ptrs()
+            if wrptr > end_of_bottom_region:
+                break
+        if found_last_lbm_warnings:
+            self.fail("LBM warnings found, possible LBM wrap issue!")
+
+    def finalCheck(self):
+        if not self.had_wf:
+            self.fail("No waveform data received!!!")
+
 ################################### HIGH-LEVEL TESTING LOGIC ###############################
             
-class TestNotFoundException(Exception): pass
+class TestNotFoundException(Exception):
+    pass
 
 class TestingSet:
     "Class for running multiple tests on a group of DOMs in parallel"
@@ -1888,7 +2251,8 @@ class TestingSet:
             if not doQuiet or test.result != "PASS":
                 print "%s%s%s %s %s->%s %s %s%s: %s %s" % (c,w,d, tstart, test.startState,
                                                            test.endState, dt, runLenStr,
-                                                           test.name(), test.result, test.summary)
+                                                           test.__class__.__name__, test.result,
+                                                           test.summary)
             if test.result == "PASS":
                 self.numpassed += 1
             else:
@@ -1968,7 +2332,7 @@ def main():
     p.add_option("-o", "--only-test",
                  action="store_true",
                  dest="doOnly",       help="Do same-state tests only when specified by -n option")
-    
+
     p.add_option("-n", "--repeat-count",
                  action="append",     type="string",    nargs=2,
                  dest="repeatCount",  help="Set # of times to run a test, "   + \
@@ -2015,6 +2379,8 @@ def main():
                    CheckConfigboot,
                    ConfigbootToIceboot,
                    CheckIceboot,
+                   ATWDDeadtimeTest,
+                   IcebootSelfReset,
                    SoftbootCycle,
                    IcebootToDomapp]
 
@@ -2031,11 +2397,16 @@ def main():
                         GetDomappRelease,
                         MessageSizePulserTest,
                         PedestalMonitoringTest,
+                        PedestalSetBiasTest,
                         NoHVPedestalStabilityTest,
                         ScalerDeadtimePulserTest,
                         SNTest,
                         SLCOnlyPulserTest,
-                        SLCEngineeringFormatTest])
+                        SLCEngineeringFormatTest,
+                        FRecordsLcTypePrepTest,
+                        LBMBufferSizeTest,
+                        LBMOverflowTest,
+                        DomappUnitTests])
 
     if opt.doFlasherTests == "A":
         ListOfTests.extend([FlasherATest])
@@ -2049,7 +2420,7 @@ def main():
         ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, FADCClockPollutionTest,
                             SPEScalerNotZeroTest, SNDeltaSPEHitTest,
                             SLCOnlyHVTest, FADCHistoTest, 
-                            ATWDHistoTest])
+                            ATWDHistoTest, HLCFRecordsTest, SLCFRecordsTest])
     # Post-domapp tests
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,

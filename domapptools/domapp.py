@@ -70,8 +70,13 @@ DATA_ACC_GET_COMP_MODE          = 27
 DATA_ACC_GET_SN_DATA            = 28
 DATA_ACC_RESET_MONI_BUF         = 29
 DATA_ACC_MONI_AVAIL             = 30
+DATA_ACC_SET_LBM_BIT_DEPTH      = 32
+DATA_ACC_GET_LBM_SIZE           = 33
 DATA_ACC_HISTO_CHARGE_STAMPS    = 34
 DATA_ACC_SELECT_ATWD            = 35
+DATA_ACC_GET_F_MONI_RATE_TYPE   = 36
+DATA_ACC_SET_F_MONI_RATE_TYPE   = 37
+DATA_ACC_GET_LBM_PTRS           = 38
 
 # EXPERIMENT_CONTROL messages subtypes
 EXPCONTROL_BEGIN_RUN                = 12
@@ -82,6 +87,7 @@ EXPCONTROL_GET_PEDESTAL_AVERAGES    = 20
 EXPCONTROL_BEGIN_FB_RUN             = 27
 EXPCONTROL_END_FB_RUN               = 28
 EXPCONTROL_CHANGE_FB_SETTINGS       = 29
+EXPCONTROL_RUN_UNIT_TESTS           = 30
 
 # HAL DACs and ADCs
 DAC_ATWD0_TRIGGER_BIAS          = 0
@@ -348,6 +354,9 @@ class DOMApp:
     def endRun(self):
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_END_RUN)
 
+    def unitTests(self):
+        self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_RUN_UNIT_TESTS)
+        
     def getSupernovaData(self):
         return self.sendMsg(DATA_ACCESS, DATA_ACC_GET_SN_DATA)
    
@@ -393,9 +402,18 @@ class DOMApp:
                      data=pack(">3I", hwInt, cfInt, fastInt)
                      )
 
-    def collectPedestals(self, natwd0=100, natwd1=100, nfadc=100):
+    def collectPedestals(self, natwd0=100, natwd1=100, nfadc=100, set_bias=None):
+        if set_bias is None:
+            data = pack(">3I", natwd0, natwd1, nfadc)
+        else:
+            atwd0 = set_bias["atwd0"]
+            atwd1 = set_bias["atwd1"]
+            data = pack(">3I6H", natwd0, natwd1, nfadc,
+                        atwd0[0], atwd0[1], atwd0[2],
+                        atwd1[0], atwd1[1], atwd1[2])
+            
         self.sendMsg(EXPERIMENT_CONTROL, EXPCONTROL_DO_PEDESTAL_COLLECTION,
-                     data=pack(">3I", natwd0, natwd1, nfadc)
+                     data=data
                      )
 
     def getPedestalAverages(self):
@@ -514,3 +532,27 @@ class DOMApp:
             data=pack(">bbhi", ib, rw, n, address)
             )
 
+
+    def get_f_moni_rate_type(self):
+        """
+        Get moni rate type, as reported in 'fast' moni ASCII 'F' records:
+        '0' = HLC
+        '1' = SLC
+        """
+        return self.sendMsg(DATA_ACCESS, DATA_ACC_GET_F_MONI_RATE_TYPE)
+
+    def set_f_moni_rate_type(self, type):
+        """
+        Set moni rate type (sett get_f_moni_rate_type)
+        """
+        self.sendMsg(DATA_ACCESS, DATA_ACC_SET_F_MONI_RATE_TYPE, data=pack('b', type))
+    
+    def set_lbm_buffer_depth(self, bits):
+        self.sendMsg(DATA_ACCESS, DATA_ACC_SET_LBM_BIT_DEPTH, data=pack('b', bits))
+
+    def get_lbm_buffer_depth(self):
+        return unpack(">L", self.sendMsg(DATA_ACCESS, DATA_ACC_GET_LBM_SIZE))[0]
+
+    def get_lbm_ptrs(self):
+        return unpack(">LL", self.sendMsg(DATA_ACCESS, DATA_ACC_GET_LBM_PTRS))
+        

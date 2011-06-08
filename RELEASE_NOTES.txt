@@ -1,3 +1,16 @@
+Next:
+0004925 (dom-mb): Use (and test) Thorsten's new DOMApp FPGA (build 674)
+0004877 (dom-mb): Set average of pedestal pattern from surface
+0004922 (dom-mb): Change LBM default size
+0004138: Add tests for LBM overflow wrap bug
+0004064: Add simple unit tests to be run on request by surface
+0004063: set LBM buffer size message doesn't return a proper status
+0004045: Read FREV when iceboot self reset fails
+0004030: Print unprintable characters returned on failed excepts, for Iceboot reset and other tests
+0003844: Change 'F' monitoring records to report HLC instead of SLC
+0003618: Make test for Iceboot 'reload' command (corresponding to 'versions all')
+==============================================================
+
 V00-02-08 08-26-09 John Jacobsen john@mail.npxdesigns.com
 0003497 (DOM-MB): Setting SLC mode should fail if engineering format is set (improved test)
 ==============================================================
