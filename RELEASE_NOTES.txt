@@ -1,4 +1,4 @@
-Next:
+V00-02-09 06-08-11 John Jacobsen john@mail.npxdesigns.com
 0004925 (dom-mb): Use (and test) Thorsten's new DOMApp FPGA (build 674)
 0004877 (dom-mb): Set average of pedestal pattern from surface
 0004922 (dom-mb): Change LBM default size
