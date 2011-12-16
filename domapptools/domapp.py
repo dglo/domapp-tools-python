@@ -132,18 +132,20 @@ class MessagingException(Exception):
             return "(Message %d bytes < 8 bytes)" % len(self.msg)
         return "(MT=%d,MST=%d,LEN=%d,0x%04x,ID=0x%02x,STATUS=0x%02x)" % unpack('>BBHHBB', self.msg)
 
-class MalformedMessageStatsException(Exception): pass
 
-class DOMApp:
-   
+class MalformedMessageStatsException(Exception):
+    pass
+
+
+class DOMApp:   
     def __init__(self, card, pair, dom, fd):
         # File descriptor now passed into constructor - may be used outside of
         # DOMApp's methods...
-        self.card    = card
-        self.pair    = pair
-        self.dom     = dom
+        self.card = card
+        self.pair = pair
+        self.dom = dom
         self.blksize = int(file(os.path.join(DRIVER_ROOT, "bufsiz")).read(100))
-        self.fd      = fd
+        self.fd = fd
         
     def __del__(self):
         pass

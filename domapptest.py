@@ -23,10 +23,26 @@ from math import sqrt
 import os.path
 import optparse
 
-class WriteTimeoutException(Exception):             pass
-class RepeatedTestChangesStateException(Exception): pass
-class UnsupportedTestException(Exception):          pass
-class TestNotHVTestException(Exception):            pass
+
+class WriteTimeoutException(Exception):
+    pass
+
+
+class RepeatedTestChangesStateException(Exception):
+    pass
+
+
+class UnsupportedTestException(Exception):
+    pass
+
+
+class TestNotHVTestException(Exception):
+    pass
+
+
+class TestNotFoundException(Exception):
+    pass
+
 
 class DOMTest(object):
     STATE_ICEBOOT    = "ib"
@@ -53,7 +69,8 @@ class DOMTest(object):
 
     def appendMoni(self, domapp):
         m = getLastMoniMsgs(domapp)
-        if m != []: self.debugMsgs.append(m)
+        if m != []:
+            self.debugMsgs.append(m)
         
     def changesState(self):
         return self.startState != self.endState
@@ -68,19 +85,22 @@ class DOMTest(object):
                 if type(m) == type([]):
                     for i in m:
                         if i != "": str += "%s\n" % i
-                elif m != "": str += "%s\n" % m
+                elif m != "":
+                    str += "%s\n" % m
         return str
 
     def clearDebugTxt(self): self.debugMsgs = []
     
-    def run(self, fd): pass
+    def run(self, fd):
+        pass
 
     def fail(self, str):
         self.debugMsgs.append(str)
         if self.result != "FAIL":
             self.result = "FAIL"
             self.summary = str
-        
+
+
 class ConfigbootToIceboot(DOMTest):
     """
     Make sure transition from configboot to iceboot succeeds
@@ -98,7 +118,8 @@ class ConfigbootToIceboot(DOMTest):
             if not ok:
                 self.fail("check for iceboot prompt failed")
                 self.debugMsgs.append(txt)
-                        
+
+
 class DomappToIceboot(DOMTest):
     """
     Make sure (softboot) transition from domapp to iceboot succeeds
@@ -112,6 +133,7 @@ class DomappToIceboot(DOMTest):
         if not ok:
             self.fail("check for iceboot prompt failed")
             self.debugMsgs.append(txt)
+
 
 class EchoToIceboot(DOMTest):
     """
@@ -127,6 +149,7 @@ class EchoToIceboot(DOMTest):
             self.fail("check for iceboot prompt failed")
             self.debugMsgs.append(txt)
     
+
 class IcebootToDomapp(DOMTest):
     """
     Make sure transition from iceboot to domapp succeeds
@@ -151,7 +174,9 @@ class IcebootToDomapp(DOMTest):
             # FIXME - test w/ domapp message here
             pass
 
+
 iceboot_versions = {}
+
 
 class IcebootSelfReset(DOMTest):
     """
@@ -216,6 +241,7 @@ class SoftbootCycle(DOMTest):
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_ICEBOOT)
+
     def run(self, fd):
         # Verify iceboot
         ok, txt = self.dor.isInIceboot2()
@@ -413,6 +439,7 @@ class EchoCommResetTest(DOMTest):
         if not ok:
             self.fail("echo of %dth packet failed" % p)
             self.debugMsgs.append(txt)
+
             
 ############################## DOMAPP TEST BASE CLASSES ############################
             
@@ -424,9 +451,10 @@ class SimpleDomAppTest(DOMTest):
     
 class DOMAppTest(DOMTest):
     "Variable duration tests specific to domapp - run length is specified"
-    def __init__(self, card, wire, dom, dor):
+    def __init__(self, card, wire, dom, dor, runLength=10):
         DOMTest.__init__(self, card, wire, dom, dor,
-                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP, runLength=10)
+                         start=DOMTest.STATE_DOMAPP, end=DOMTest.STATE_DOMAPP,
+                         runLength=runLength)
         
     def SNClockOk(self, clock, prevClock, bins, prevBins):
         DT = 65536
@@ -589,6 +617,7 @@ class ChargeStampHistoTest(DOMAppHVTest):
             except:
                 pass
 
+
 class FADCHistoTest(ChargeStampHistoTest):
     """
     Histogram FADC (in-ice) chargestamps.  Require nonzero entries for some
@@ -596,12 +625,14 @@ class FADCHistoTest(ChargeStampHistoTest):
     """
     pass
 
+
 class ATWDHistoTest(ChargeStampHistoTest):
     """
     Histogram ATWD (IceTop) chargestamps.  Require nonzero entries for some
     bins in each histogram.
     """
     pass
+
 
 class FlasherTest(DOMAppTest):
     def __init__(self, card, wire, dom, dor, abSelect='A'):
@@ -731,9 +762,14 @@ class FlasherBTest(FlasherTest):
     def __init__(self, card, wire, dom, dor):
         FlasherTest.__init__(self, card, wire, dom, dor, 'B')
 
+
 ####################### HELPER METHODS (move into domapp base classes?) ####################
 
-def setDAC(domapp, dac, val): domapp.writeDAC(dac, val)
+
+def setDAC(domapp, dac, val):
+    domapp.writeDAC(dac, val)
+
+
 def setDefaultDACs(domapp):
     setDAC(domapp, DAC_ATWD0_TRIGGER_BIAS, 850)
     setDAC(domapp, DAC_ATWD1_TRIGGER_BIAS, 850)
@@ -747,6 +783,7 @@ def setDefaultDACs(domapp):
     setDAC(domapp, DAC_MULTIPLE_SPE_THRESH, 650)
     setDAC(domapp, DAC_FADC_REF, 800)
     setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 80)
+
 
 def unpackMoni(monidata):
     while monidata and len(monidata)>=4:
@@ -797,7 +834,9 @@ def getLastMoniMsgs(domapp):
         ret.append("GET MONI DATA FAILED: %s" % exc_string())
     return ret
 
+
 ################################### SPECIFIC TESTS ###############################
+
 
 class GetDomappRelease(SimpleDomAppTest):
     """
@@ -854,6 +893,7 @@ class DOMIDTest(SimpleDomAppTest):
         except Exception, e:
             self.fail(exc_string())
 
+
 class IdleCounterTest(DOMAppTest):
     """
     Test idle counters in monitoring stream
@@ -896,6 +936,7 @@ class IdleCounterTest(DOMAppTest):
             try: domapp.endRun()
             except: pass
         
+
 class ScalerDeadtimePulserTest(DOMAppTest):
     """
     Set fast moni interval, enable pulser and look for nonzero
@@ -938,6 +979,7 @@ class ScalerDeadtimePulserTest(DOMAppTest):
             self.fail(exc_string())
             self.appendMoni(domapp)
                                               
+
 class MessageSizePulserTest(DOMAppTest):
     """
     Run pulser at a high rate and make sure you have messages > 3000 bytes
@@ -980,6 +1022,7 @@ class MessageSizePulserTest(DOMAppTest):
 
         if maxMsgSize < 3000: self.fail("Maximum message size (%d bytes) too small!"
                                          % maxMsgSize)
+
 
 class SPEScalerNotZeroTest(DOMAppHVTest):
     """
@@ -1051,6 +1094,7 @@ class SPEScalerNotZeroTest(DOMAppHVTest):
                 pass
             self.appendMoni(domapp)
             return
+
         
 class FastMoniTestHV(DOMAppHVTest):
     """
@@ -1188,6 +1232,7 @@ class FastMoniTestHV(DOMAppHVTest):
             self.fail("Total hits monitored (%d) doesn't equal total hits read out (%d)"
                       % (hitsMonitored, hitsReadOut))
 
+
 class SLCOnlyTest(DOMAppTest):
     """
     Parent class for SLCOnlyPulserTest and SLCOnlyHVTest, which does the test
@@ -1254,7 +1299,8 @@ class SLCOnlyPulserTest(SLCOnlyTest, DOMAppTest):
     on.  Requirement is to get some non-beacon hits but NO waveforms - just
     delta-compression headers.  This test runs with front end pulser (no HV).
     """
-    def run(self, fd): SLCOnlyTest.run(self, fd)
+    def run(self, fd):
+        SLCOnlyTest.run(self, fd)
 
             
 class SLCOnlyHVTest(DOMAppHVTest, SLCOnlyTest):
@@ -1263,7 +1309,8 @@ class SLCOnlyHVTest(DOMAppHVTest, SLCOnlyTest):
     on.  Requirement is to get some non-beacon hits but NO waveforms - just
     delta-compression headers.  This test runs with real SPEs with HV on.
     """
-    def run(self, fd): SLCOnlyTest.run(self, fd, doHV=True)
+    def run(self, fd):
+        SLCOnlyTest.run(self, fd, doHV=True)
 
     
 class SNDeltaSPEHitTest(DOMAppHVTest):
@@ -1342,6 +1389,7 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
             self.appendMoni(domapp)
             return
 
+
 class TimedDOMAppTest(DOMAppHVTest):
     """
     This class is an attempt to abstract out some common behaviors in several of the tests.
@@ -1373,8 +1421,9 @@ class TimedDOMAppTest(DOMAppHVTest):
         domapp.startRun()
         domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
 
-    def endRun(self, domapp): domapp.endRun()
-    
+    def endRun(self, domapp):
+        domapp.endRun()
+
     def cleanup(self, domapp):
         """
         Generic cleanup method for domapp test
@@ -1382,7 +1431,7 @@ class TimedDOMAppTest(DOMAppHVTest):
         if self.targetHV is not None:
             self.turnOffHV(domapp)
         self.appendMoni(domapp)
-        
+
     def interval(self, domapp):
         """
         Do every second (e.g. poll domapp)
@@ -1395,7 +1444,7 @@ class TimedDOMAppTest(DOMAppHVTest):
             if self.interval(domapp):
                 break
             time.sleep(1)
-        
+
     def run(self, fd):
         """
         Generic run method - shouldn't have to override me
@@ -1448,8 +1497,8 @@ class FADCClockPollutionTest(TimedDOMAppTest):
         TimedDOMAppTest.prepDomapp(self, domapp)
         ATWD_PEDS_PER_LOOP = 100
         FADC_PEDS_PER_LOOP = 200
-        MAX_ALLOWED_RMS    = 1.0
-        numloops           = 100
+        MAX_ALLOWED_RMS = 1.0
+        numloops = 100
         domapp.setTriggerMode(2)
         domapp.selectMUX(255)
         # Do the collection
@@ -1486,7 +1535,8 @@ class FADCClockPollutionTest(TimedDOMAppTest):
         if abs(sum) > MAX_OSC:
             self.fail("Alternating sum abs(%d) > %d!" % (sum, MAX_OSC))
                                                     
-    def interval(self, domapp): return True # Short-circuit 'running' phase - do everything in prep
+    def interval(self, domapp):
+        return True # Short-circuit 'running' phase - do everything in prep
 
     
 class PedestalStabilityTest(TimedDOMAppTest):
@@ -1584,26 +1634,35 @@ class NoHVPedestalStabilityTest(PedestalStabilityTest):
     targetHV = None
     
 
-class PedestalMonitoringTest(SimpleDomAppTest):
+class PedestalMonitoringTest(TimedDOMAppTest):
     """
     Make sure pedestal monitoring records are present and well-formatted when
     pedestal generation occurs
     """
     def __init__(self, *args, **kwargs):
         self._biases = {}
-        super(PedestalMonitoringTest, self).__init__(*args, **kwargs)
-        
+        super(TimedDOMAppTest, self).__init__(*args, **kwargs)
+
     def do_peds(self, domapp, set_bias=None):
         if set_bias:
             self._biases = set_bias
         domapp.collectPedestals(100, 100, 200, set_bias)
         
-    def run(self, fd):
-        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+    def prepDomapp(self, domapp):
+        self.atwd_norm = [[[0 for bin in range(128)] for chan in range(3)] for chip in 0, 1]
+        self.atwd_sums = [[[0 for bin in range(128)] for chan in range(3)] for chip in 0, 1]
+        self.totalBeaconHits = 0
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        # Superclass DAC settings don't work for SPTS ichub21 00a,
+        # need to tweak SPE threshold or we saturate w/ fake SPEs:
+        setDAC(domapp, DAC_SINGLE_SPE_THRESH, 300)  
+        domapp.setTriggerMode(2)            
+        domapp.setPulser(mode=BEACON, rate=100)
+        domapp.setDataFormat(0)
+        domapp.setCompressionMode(0)
+                                    
         pedcount = 0
         try:
-            domapp.resetMonitorBuffer()
-            setDefaultDACs(domapp)
             self.do_peds(domapp)
             mlist = getLastMoniMsgs(domapp)
             for m in mlist:
@@ -1622,8 +1681,7 @@ class PedestalMonitoringTest(SimpleDomAppTest):
                         if bias_wanted != bias_found:
                             self.fail("Expected programmed bias %d, got %d!!!" % \
                                       (bias_wanted, bias_found))
-                            
-            
+
         except Exception, e:
             self.fail(exc_string())
             self.appendMoni(domapp)
@@ -1634,12 +1692,55 @@ class PedestalMonitoringTest(SimpleDomAppTest):
                       pedcount)
             self.appendMoni(domapp)
 
+    def interval(self, domapp):
+        if not self._biases:
+            return
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            hitBuf = EngHitBuf(hitdata)
+            for hit in hitBuf.next():
+                assert hit.is_beacon, "Hit is not beacon hit!!! Data follows:\n%s" % hit
+                self.totalBeaconHits += 1
+                for chan in range(3):
+                    for bin in range(128):
+                        thisbin = hit.atwd[chan][bin]
+                        self.atwd_norm[hit.atwd_chip][chan][bin] += 1
+                        self.atwd_sums[hit.atwd_chip][chan][bin] += thisbin
+        return False
+
+    def finalCheck(self):
+        if not self._biases:
+            return
+        if self.totalBeaconHits < 1:
+            self.fail("Got no waveform data!!!")
+        else:
+            self.summary += "%d hits, " % self.totalBeaconHits
+            for chip in range(2):
+                for chan in range(3):
+                    sum_over_bins = 0.0
+                    for bin in range(128):
+                        sum = self.atwd_sums[chip][chan][bin]
+                        norm = self.atwd_norm[chip][chan][bin]
+                        sum_over_bins += sum/float(norm)
+                    average_over_bins = sum_over_bins / 128.
+                    self.summary += "%1.3f " % average_over_bins
+                    expected = self._biases['atwd%d' % chip][chan]
+                    if abs(average_over_bins - expected) > 2.:
+                        self.fail('Chip %d channel %d average ped. value %1.3f '
+                                  'deviates from expected (%1.3f)' % (chip, chan,
+                                  average_over_bins, expected))
+                                  
+
 
 class PedestalSetBiasTest(PedestalMonitoringTest):
+    def __init__(self, *args, **kwargs):
+        kwargs['runLength'] = 30
+        super(type(self), self).__init__(*args, **kwargs)
+
     def do_peds(self, domapp):
-        super(self.__class__, self).do_peds(domapp,
-                                            set_bias = { 'atwd0': [100,200,300],
-                                                         'atwd1': [400,500,600] })
+        super(type(self), self).do_peds(domapp,
+                                            set_bias = {'atwd0': [100,200,300],
+                                                        'atwd1': [400,500,600]})
     def run(self, fd):
         super(self.__class__, self).run(fd)
 
@@ -1732,6 +1833,7 @@ class SLCEngineeringFormatTest(DOMAppTest):
             self.debugMsgs.append(mlist)
             self.fail('Got mode=%s, type=%s' % (mode, type))
 
+
 def getLastModeTypeMsg(mlist):
     """
     Return LC mode and type as reported from a short stream of domapp monitoring data
@@ -1743,6 +1845,7 @@ def getLastModeTypeMsg(mlist):
             mode = int(m.group(1))
             type = int(m.group(2))
     return mode, type
+
 
 class SNTest(DOMAppTest):
     """
@@ -2126,9 +2229,6 @@ class LBMOverflowTest(TimedDOMAppTest):
 
 ################################### HIGH-LEVEL TESTING LOGIC ###############################
             
-class TestNotFoundException(Exception):
-    pass
-
 class TestingSet:
     "Class for running multiple tests on a group of DOMs in parallel"
     def __init__(self, domDict, doOnly=False, domappOnly=False, stopOnFail=False, useDomapp=None):
@@ -2235,10 +2335,10 @@ class TestingSet:
                                                         % t.__class__.__name__ + "cannot be repeated.")
         for test in self.cycle(testObjList, startState, self.doOnly, self.domappOnly, c, w, d):
             tstart = time.strftime("%d %b %Y %H:%M:%S", time.localtime())
-            t0     = time.time()
+            t0 = time.time()
             test.reset()
             test.run(dor.fd)
-            dt     = "%2.2f" % (time.time()-t0)
+            dt = "%2.2f" % (time.time()-t0)
             if(test.startState != test.endState): # If state change, flush buffers etc. to get clean IO
                 dor.close()
                 dor.open()
@@ -2301,9 +2401,11 @@ class TestingSet:
                                                                                  self.numfailed,
                                                                                  self.numtests, tElapsed)
 
+
 def getDomappToolsPythonVersion():
     f = open("/usr/local/share/domapp-tools-python-version")
     return sub(r'\n','', f.readline())
+
 
 def main():
     p = optparse.OptionParser()
@@ -2484,4 +2586,5 @@ def main():
     
     raise SystemExit
 
-if __name__ == "__main__": main()
+if __name__ == "__main__":
+    main()

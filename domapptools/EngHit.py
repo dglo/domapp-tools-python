@@ -22,11 +22,13 @@ def calc_atwd_fmt(fmt):
         dtab[fmt[1] & 0x0f],
         dtab[(fmt[1] & 0xf0) >> 4] );
 
+
 class EngHit:
     """Some stuff stolen from hits.py in Kael's PyDOM"""
     def __init__(self, data):
         self.data = data 
         self.trigByte,  = unpack('B', self.data[8:9])
+        self.is_beacon = self.trigByte & 0x01
         self.trigSource = self.trigByte & 0x03;
         self.fbRunInProgress = (self.trigByte>>4)&1 and True or False
         self.atwd = [ None, None, None, None ]
@@ -56,9 +58,10 @@ class EngHit:
         for a in xrange(0,4):
             atwds += ("ATWD %d: " % a) + str(self.atwd[a]) + "\n"
         return """
-%d data bytes; TrigByte 0x%02x TrigSource %d FB-in-prog: %s
+%d data bytes; Chip %s  TrigByte 0x%02x TrigSource %d FB-in-prog: %s
 %s
-""" % (len(self.data), self.trigByte, self.trigSource, self.fbRunInProgress, atwds)
+""" % (len(self.data), self.atwd_chip, self.trigByte, self.trigSource,
+       self.fbRunInProgress, atwds)
 
     
 class MalformedEngineeringEventBuffer(Exception): pass
