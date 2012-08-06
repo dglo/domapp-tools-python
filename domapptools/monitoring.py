@@ -33,7 +33,15 @@ class MonitorRecord:
     def getDOMClock(self):
         """Retrieve the DOM timestamp."""
         return self.domClock
-        
+
+    def __str__(self):
+        return """
+    DOM Id .............................. %s
+    UT Timestamp ........................ %x
+    DOM Timestamp ....................... %x
+    Record Type ......................... %02X
+    """ % (self.domid, self.timestamp, self.domClock, self.moniType)
+    
 class ASCIIMonitorRecord(MonitorRecord):
     """
     Implements the ASCII type logging monitor record.
@@ -46,12 +54,19 @@ class ASCIIMonitorRecord(MonitorRecord):
         """Retrieve the payload message from the DOM monitor record."""
         return self.text
 
+    def __str__(self):
+        return """
+    DOM Id .............................. %s
+    UT Timestamp ........................ %x
+    DOM Timestamp ....................... %x
+    Message ............................. %s
+    """ % (self.domid, self.timestamp, self.domClock, self.text)
+
 class ConfigMonitorRecord(MonitorRecord):
     def __init__(self, domid, timestamp, buf, moniLen, moniType, domClock):
         MonitorRecord.__init__(self, domid, timestamp, buf, moniLen, moniType, domClock)
 
     def __str__(self):
-        print len(self.buf)
         return """
     DOM Id .............................. %s
     UT Timestamp ........................ %x
@@ -191,11 +206,13 @@ def readMoniStream(f):
     
     while 1:
         hdr = f.read(32)
-        if len(hdr) == 0: break
+        if len(hdr) == 0:
+            break
         (recl, recid, domid, timestamp) = unpack('>iiq8xq', hdr)
         domid = "%12.12x" % (domid)
-        #print recl, recid, domid, timestamp
         buf = f.read(recl - 32)
+        if (len(buf) < (recl - 32)) or (recl == 32):
+            break
         moni = MonitorRecordFactory(buf, domid, timestamp)
         if domid not in xroot: 
             xroot[domid] = [ ]
@@ -212,11 +229,13 @@ def readMoniStreamDH(f):
     
     while 1:
         hdr = f.read(16)
-        if len(hdr) != 16: break
+        if len(hdr) != 16:
+            break
         (recl, recid, domid) = unpack('>iiq', hdr)
         domid = "%12.12x" % (domid)
-        #print recl, recid, domid, timestamp
         buf = f.read(recl - 16)
+        if (len(buf) < (recl - 16)) or (recl == 16):
+            break
         if domid not in xroot: 
             xroot[domid] = [ ]
         while len(buf) > 0:
