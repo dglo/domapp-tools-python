@@ -162,28 +162,28 @@ class Driver:
            
     def on(self, card, pair):
         """Turn on specified (card, pair)."""
-        f = file(os.path.join(self.path(card, pair), "pwr"), "w")       
+        f = file(os.path.join(self.path(card, pair), "pwr"), "w", buffering=0)       
         f.write("on\n")
         f.close()
         return self.scan()
        
     def onAll(self):
         """Turn all channels on."""
-        f = file(os.path.join(self.root, "pwrall"), "w")
+        f = file(os.path.join(self.root, "pwrall"), "w", buffering=0)
         f.write("on\n")
         f.close()
         return self.scan()
        
     def offAll(self):
         """Turns all channels off."""
-        f = file(os.path.join(self.root, "pwrall"), "w")
+        f = file(os.path.join(self.root, "pwrall"), "w", buffering=0) 
         f.write("off\n")
         f.close()
         return self.scan()
        
     def off(self, card, pair):
         """Turn off specified (card, pair)."""
-        f = file(os.path.join(self.path(card, pair), "pwr"), "w")
+        f = file(os.path.join(self.path(card, pair), "pwr"), "w", buffering=0)
         f.write("off\n")
         f.close()
         return self.scan()
@@ -193,7 +193,7 @@ class Driver:
         if len(self.doms == 0):
             self.discover_doms()
         card, pair, dom = self.doms[domId]
-        f = file(os.path.join(self.path(card, pair, dom), "softboot"))
+        f = file(os.path.join(self.path(card, pair, dom), "softboot"), "w", buffering=0)
         f.write("reset\n")
         f.close()
         return self.scan()
@@ -256,7 +256,7 @@ class Driver:
 
     def enable_blocking(self, state):
         """disable blocking on the domhub"""
-        f = file(os.path.join(self.root, 'blocking'), 'w')
+        f = file(os.path.join(self.root, 'blocking'), 'w', buffering=0)
         f.write(str(state) + "\n")
         f.close()
 
@@ -322,7 +322,7 @@ class Power:
     """
     def __init__(self, card, pair):
         """Constructor for a particular card and pair."""
-        self.ptop = "%s/card%d/pair%d" % (_DRIVER_BASE, card, pair)
+        self.ptop = "/proc/driver/domhub/card%d/pair%d" % (card, pair)
         self.fpwr = file(self.ptop + "/pwr", "w")
         self.card = card
         self.pair = pair

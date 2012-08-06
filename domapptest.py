@@ -23,7 +23,6 @@ from math import sqrt
 import os.path
 import optparse
 
-
 class WriteTimeoutException(Exception):
     pass
 
@@ -58,8 +57,11 @@ class DOMTest(object):
         self.dor        = dor
         self.startState = start
         self.endState   = end
-
         self.runLength  = runLength
+        self.uploadFileName  = None
+        self.syncWithPartner = False
+        self.startEvent      = None
+        self.finishEvent     = None
         self.reset()
 
     def reset(self):
@@ -74,6 +76,18 @@ class DOMTest(object):
         
     def changesState(self):
         return self.startState != self.endState
+
+    def requiresSync(self):
+        return self.syncWithPartner
+
+    def setStartEvent(self, e):
+        self.startEvent = e
+
+    def setFinishEvent(self, e):
+        self.finishEvent = e        
+
+    def setUploadFileName(self, f):
+        self.uploadFileName = f
     
     def setRunLength(self, l):
         self.runLength = l
@@ -157,11 +171,6 @@ class IcebootToDomapp(DOMTest):
     def __init__(self, card, wire, dom, dor):
         DOMTest.__init__(self, card, wire, dom, dor,
                          start=DOMTest.STATE_ICEBOOT, end=DOMTest.STATE_DOMAPP)
-        self.uploadFileName = None
-        
-    def setUploadFileName(self, f):
-        self.uploadFileName = f
-    
     def run(self, fd):
         if self.uploadFileName: 
             ok, txt = self.dor.uploadDomapp2(self.uploadFileName)
@@ -439,7 +448,6 @@ class EchoCommResetTest(DOMTest):
         if not ok:
             self.fail("echo of %dth packet failed" % p)
             self.debugMsgs.append(txt)
-
             
 ############################## DOMAPP TEST BASE CLASSES ############################
             
@@ -1639,9 +1647,9 @@ class PedestalMonitoringTest(TimedDOMAppTest):
     Make sure pedestal monitoring records are present and well-formatted when
     pedestal generation occurs
     """
-    def __init__(self, *args, **kwargs):
+    def __init__(self, card, wire, dom, dor, runLength=10):
         self._biases = {}
-        super(TimedDOMAppTest, self).__init__(*args, **kwargs)
+        super(TimedDOMAppTest, self).__init__(card, wire, dom, dor, runLength)
 
     def do_peds(self, domapp, set_bias=None):
         if set_bias:
@@ -1725,24 +1733,127 @@ class PedestalMonitoringTest(TimedDOMAppTest):
                     average_over_bins = sum_over_bins / 128.
                     self.summary += "%1.3f " % average_over_bins
                     expected = self._biases['atwd%d' % chip][chan]
+                                                             
                     if abs(average_over_bins - expected) > 2.:
                         self.fail('Chip %d channel %d average ped. value %1.3f '
                                   'deviates from expected (%1.3f)' % (chip, chan,
                                   average_over_bins, expected))
                                   
 
-
 class PedestalSetBiasTest(PedestalMonitoringTest):
-    def __init__(self, *args, **kwargs):
-        kwargs['runLength'] = 30
-        super(type(self), self).__init__(*args, **kwargs)
+    def __init__(self, card, wire, dom, dor, runLength=10):
+        runLength = 30
+        super(PedestalSetBiasTest, self).__init__(card, wire, dom, dor, runLength)
 
     def do_peds(self, domapp):
-        super(type(self), self).do_peds(domapp,
+        super(PedestalSetBiasTest, self).do_peds(domapp,
                                             set_bias = {'atwd0': [100,200,300],
                                                         'atwd1': [400,500,600]})
+
+class DomappPowerCycle(SimpleDomAppTest):
+    """
+    Transition from domapp back to domapp by power-cycling.
+    """    
+    def __init__(self, card, wire, dom, dor):
+        super(DomappPowerCycle, self).__init__(card, wire, dom, dor)
+        self.syncWithPartner = True
+        self.maxPowerOnTrials = 3
+
     def run(self, fd):
-        super(self.__class__, self).run(fd)
+        self.dor.close()
+        eStart = self.startEvent   # Indicates we need to sync A/B DOMs because of the power-cycle
+        if eStart:
+            if self.dom == 'B':
+                # This DOM will flag when it's ready to be powered off
+                eStart.set()
+            else:
+                # This DOM will wait until partner has signaled it's ready to go
+                eStart.wait()
+                eStart.clear()                
+
+        # A DOM normally controls power cycle for a pair
+        # Exception is if A DOM was excluded from testing
+        if (self.dom == 'A') or ((not eStart) and (self.dom == 'B')):
+            # POWER CYCLE
+            dor = Driver()
+            dor.off(self.card, self.wire)
+            time.sleep(5)
+
+            if dor[self.card][self.wire].powered:
+                self.fail("Couldn't power off the DOM")
+                
+            # FIX ME: why does one have to do this multiple times for some wire pairs?!
+            pwrtrial = 0
+            while (pwrtrial < self.maxPowerOnTrials) and not dor[self.card][self.wire].powered:
+                dor.on(self.card, self.wire)
+                time.sleep(5)
+                pwrtrial += 1
+
+            if not dor[self.card][self.wire].powered:
+                self.fail("Couldn't power on the DOM in %d tries" % self.maxPowerOnTrials)
+                            
+        # Put A DOM back into domapp            
+        if self.dom == 'A':
+            self.dor.open()
+            ok = self.dor.isInConfigboot2()
+            if not ok:
+                self.fail("Didn't find DOM in configboot after power-cycle!")
+            time.sleep(3)                
+            ok, txt = self.dor.configbootToIceboot2()
+            if not ok:
+                self.fail("Could not transition into iceboot")
+                self.debugMsgs.append(txt)
+
+            if self.uploadFileName: 
+                ok, txt = self.dor.uploadDomapp2(self.uploadFileName)
+            else:
+                ok, txt = self.dor.icebootToDomapp2()
+            if not ok:        
+                self.fail("Could not transition into domapp")
+                self.debugMsgs.append(txt)            
+
+        eFinish = self.finishEvent
+        if eFinish:
+            if self.dom == 'B':
+                # This DOM will wait on the testing DOM to finish
+                eFinish.wait()
+                eFinish.clear()
+            else:
+                # This DOM will signal that is has finished with the test
+                eFinish.set()
+        
+        # Put B DOM back into domapp
+        if self.dom == 'B':
+            self.dor.open()
+            ok = self.dor.isInConfigboot2()
+            if not ok:
+                self.fail("Didn't find DOM in configboot after power-cycle!")
+            time.sleep(3)                
+            ok, txt = self.dor.configbootToIceboot2()
+            if not ok:
+                self.fail("Could not transition into iceboot")
+                self.debugMsgs.append(txt)
+
+            if self.uploadFileName: 
+                ok, txt = self.dor.uploadDomapp2(self.uploadFileName)
+            else:
+                ok, txt = self.dor.icebootToDomapp2()
+            if not ok:        
+                self.fail("Could not transition into domapp")
+                self.debugMsgs.append(txt)
+                
+    
+class PedestalPrescanTest(PedestalSetBiasTest):
+    """
+    Test that ATWDs are prescanned by collecting pedestals averages with
+    a small number of samples, and looking for a bias problem.  Must be
+    power-cycled to expose prescanning problem, though.
+    """
+    def do_peds(self, domapp):
+        set_bias = {'atwd0': [600,600,600],
+                    'atwd1': [600,600,600]}
+        self._biases = set_bias
+        domapp.collectPedestals(10, 10, 20, set_bias)
 
     
 class DeltaCompressionBeaconTest(DOMAppTest):
@@ -2243,6 +2354,8 @@ class TestingSet:
         self.numfailed    = 0
         self.numtests     = 0
         self.counterLock  = threading.Lock()
+        self.testsyncDict = {}
+        self.testsyncLock = threading.Lock()
         self.stopOnFail   = stopOnFail
         self.useDomapp    = useDomapp
         self.domappOnly   = domappOnly
@@ -2323,11 +2436,38 @@ class TestingSet:
         for testName in self.testList:
             t = testName(c,w,d,dor)
             # Tell the domapp test to use alternate domapp if required:
-            if t.__class__.__name__ == "IcebootToDomapp" and self.useDomapp:
+            if self.useDomapp:
                 t.setUploadFileName(self.useDomapp)
             # Set duration which may have been set explicitly by user:
             if self.durationDict[testName]:
                 t.setRunLength(self.durationDict[testName])
+            # Check if we need to synchronize this test with the same test on its partner DOM
+            if t.requiresSync():
+                #### LOCK -- partner may be trying to do this at the same time
+                self.testsyncLock.acquire()
+                try:
+                    # Check to see if partner has already been here
+                    e = None
+                    for syncTest in self.testsyncDict:
+                        if (type(t) == type(syncTest) and t.card == syncTest.card
+                            and t.wire == syncTest.wire and t.dom != syncTest.dom):
+                            e = self.testsyncDict[syncTest]
+                            break
+                    # Create the event if we didn't find it
+                    if not e:
+                        e = threading.Event()
+                        self.testsyncDict[t] = e                
+                    else:
+                        # We have linked a pair of tests; set the sync event for both
+                        t.setStartEvent(e)
+                        syncTest.setStartEvent(e)
+                        eFinish = threading.Event()
+                        t.setFinishEvent(eFinish)
+                        syncTest.setFinishEvent(eFinish)
+                finally:
+                    #### UNLOCK
+                    self.testsyncLock.release()
+
             testObjList.append(t)
             # FIXME - check to make sure tests for which ntrialsDict > 1 preserve state
             if self.ntrialsDict[t.__class__.__name__] > 1 and t.changesState():
@@ -2372,6 +2512,7 @@ class TestingSet:
             
     def runThread(self, domid, doQuiet, nCycles):
         c, w, d = self.domDict[domid]
+        dor = Driver()
         try:
             for i in range(nCycles):
                 self.doAllTests(domid, c,w,d, doQuiet)
@@ -2421,6 +2562,11 @@ def main():
                  action="store",      type="string",
                  dest="doFlasherTests",
                  help="Perform flasher tests, arg. is 'A' or 'B'")
+
+    p.add_option("-P", "--power-cycle-tests",
+                 action="store_true",
+                 dest="doPowerTests",
+                 help="Perform tests that require power-cycling")    
         
     p.add_option("-l", "--list-tests",
                  action="store_true",
@@ -2464,6 +2610,7 @@ def main():
     p.set_defaults(stopFail         = False,
                    doHVTests        = False,
                    doFlasherTests   = None,
+                   doPowerTests     = False,
                    setDuration      = None,
                    repeatCount      = None,
                    excludeDoms      = None,
@@ -2485,7 +2632,6 @@ def main():
                    IcebootSelfReset,
                    SoftbootCycle,
                    IcebootToDomapp]
-
 
     # Domapp tests have to be kept together for the
     # -o option to work correctly (FIXME)
@@ -2510,6 +2656,10 @@ def main():
                         LBMOverflowTest,
                         DomappUnitTests])
 
+    if opt.doPowerTests:
+        ListOfTests.extend([DomappPowerCycle,
+                            PedestalPrescanTest])
+
     if opt.doFlasherTests == "A":
         ListOfTests.extend([FlasherATest])
     elif opt.doFlasherTests == "B":
@@ -2517,7 +2667,7 @@ def main():
     elif opt.doFlasherTests != None:
         print "Flasher test arg must be 'A' or 'B'"
         raise SystemExit
-
+    
     if opt.doHVTests:
         ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, FADCClockPollutionTest,
                             SPEScalerNotZeroTest, SNDeltaSPEHitTest,

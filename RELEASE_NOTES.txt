@@ -1,5 +1,7 @@
-Next:
+NEXT:
 0005407: Implement rigorous test on setting of baseline average
+0005660: Online pedestal determination inaccurate after some DOM state changes
+
 ==============================================================
 
 V00-02-09 06-08-11 John Jacobsen john@mail.npxdesigns.com
