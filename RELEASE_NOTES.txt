@@ -1,4 +1,6 @@
 NEXT:
+0005065: test interval query
+===============
 0005407: Implement rigorous test on setting of baseline average
 0005660: Online pedestal determination inaccurate after some DOM state changes
 

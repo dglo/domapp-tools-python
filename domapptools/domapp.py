@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+import errno
 import os, time
 from sys import stderr
 from struct import pack, unpack
@@ -77,6 +77,7 @@ DATA_ACC_SELECT_ATWD            = 35
 DATA_ACC_GET_F_MONI_RATE_TYPE   = 36
 DATA_ACC_SET_F_MONI_RATE_TYPE   = 37
 DATA_ACC_GET_LBM_PTRS           = 38
+DATA_ACC_GET_INTERVAL           = 39
 
 # EXPERIMENT_CONTROL messages subtypes
 EXPCONTROL_BEGIN_RUN                = 12
@@ -117,6 +118,15 @@ DRIVER_ROOT = "/proc/driver/domhub"
 _atwdMask = { 1 : { 0 : 0, 16 : 9, 32 : 1, 64 : 5, 128 : 13 },
               2 : { 0 : 0, 16 : 11, 32 : 3, 64 : 7, 128 : 15 } }
 
+class IntervalTimedOut(Exception):
+    def __init__(self, data_count, moni_count, sn_count):
+        self.data_count = data_count
+        self.moni_count = moni_count
+        self.sn_count = sn_count
+
+    def __str__(self):
+        return "Interval timed out data %d/ moni %d/ supernova %d" % (data_count, moni_count, sn_count)
+
 class InsufficientMessageDataPortion(Exception):
     def __init__(self, buf, expected):
         self.buf = buf; self.buf = buf; self.expected = expected
@@ -137,6 +147,19 @@ class MalformedMessageStatsException(Exception):
     pass
 
 
+class GetIntervalException(Exception):
+    def __init__(self, data_count, moni_count, sn_count):
+        self.data_count = data_count
+        self.moni_count = moni_count
+        self.sn_count = sn_count
+
+    def __str__(self):
+        return "GetIntervalException (data: %d, moni: %d, sn: %d)" % \
+            (self.data_count,
+             self.moni_count,
+             self.sn_count)
+
+
 class DOMApp:   
     def __init__(self, card, pair, dom, fd):
         # File descriptor now passed into constructor - may be used outside of
@@ -153,7 +176,7 @@ class DOMApp:
     def sendMsg(self, type, subtype, data="", msgid=0, status=0, timeout=5000):
         ndat = len(data)
         msg  = pack(">BBHHBB", type, subtype, ndat, 0, msgid, status) + data
-        EAGAIN = 11
+        
         # FIXME: handle partial writes better
         t = MiniTimer(timeout)
         nw = 0
@@ -161,7 +184,7 @@ class DOMApp:
             try:
                 nw = os.write(self.fd, msg)
             except OSError, e:
-                if e.errno == EAGAIN:
+                if e.errno == errno.EAGAIN:
                     time.sleep(0.001) # Nothing available
                     continue
                 else: raise
@@ -177,7 +200,7 @@ class DOMApp:
             try:
                 buf  += os.read(self.fd, self.blksize)
             except OSError, e:
-                if e.errno == EAGAIN: time.sleep(0.001) # Nothing available
+                if e.errno == errno.EAGAIN: time.sleep(0.001) # Nothing available
                 else: raise
             except Exception: raise
 
@@ -195,6 +218,86 @@ class DOMApp:
             # print >>stderr, "Message Error: %s" % MessagingException(buf[0:8])
             raise MessagingException(buf[0:8])
         return buf[8:]
+
+
+    def recvMsgFull(self, status=0, timeout=5000):
+        """Receives a FULL message from the dom
+        The origional sendMsg code stripped off the header information before
+        returning it to the user.  We need that information to demultiplex the 
+        response from GET_INTERVAL.
+        So return the ENTIRE message
+        """
+        t = MiniTimer(timeout)
+        buf = ""
+        while not t.expired():
+            try:
+                buf  += os.read(self.fd, self.blksize)
+            except OSError, e:
+                if e.errno == errno.EAGAIN: time.sleep(0.001) # Nothing available
+                else: raise
+            except Exception: raise
+
+            if len(buf) >= 8:
+                msglen, = unpack('>H', buf[2:4])
+                # FIXME - worry about second message in next portion of write
+                if len(buf) >= msglen+8: break
+                    
+        if len(buf) < 8:
+            raise MessagingException(buf[0:len(buf)])
+        
+        status, = unpack("B", buf[7])
+        
+        if status != 0x01:
+            # print >>stderr, "Message Error: %s" % MessagingException(buf[0:8])
+            raise MessagingException(buf[0:8])
+        return buf
+
+
+    def getInterval(self):
+        # currently we are expecting a success
+        # message back from the dom before the streaming starts
+        
+        self.sendMsg(DATA_ACCESS, DATA_ACC_GET_INTERVAL)
+                
+        data_count = 0
+        moni_count = 0
+        sn_count = 0
+        duration = 0
+        start = time.time()
+
+        done = False
+        while not done and ((time.time() - start) < 30):
+            try:
+                next_msg = self.recvMsgFull()
+            except Exception, e:
+                raise GetIntervalException(data_count, moni_count, sn_count)
+            
+            # unpack the format field from that message
+            mesg_type, mesg_subtype = unpack(">BB", next_msg[0:2])
+
+            if mesg_type==3 and mesg_subtype==11:
+                # data packet
+                data_count = data_count + 1
+            elif mesg_type==3 and mesg_subtype==12:
+                moni_count = moni_count + 1
+            elif mesg_type==3 and mesg_subtype==28:
+                sn_count = sn_count + 1
+                done = True
+            else:
+                raise MessagingException(next_msg[0:8])
+
+        if not done:
+            # the interval did not complete in 30 seconds
+            raise IntervalTimedOut(data_count, moni_count, sn_count)
+
+        return {"data_count": data_count,
+                "moni_count": moni_count,
+                "sn_count": sn_count,
+                "duration": time.time() - start,
+                "card": self.card,
+                "pair": self.pair,
+                "dom": self.dom}
+        
 
     def getMainboardID(self):
         return self.sendMsg(MESSAGE_HANDLER, MSGHAND_GET_DOM_ID)

@@ -641,6 +641,87 @@ class ATWDHistoTest(ChargeStampHistoTest):
     """
     pass
 
+class GetIntervalTest(DOMAppTest):
+    """
+    Get Interval Test -> Get one interval of data from the dom
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+
+        domapp.setMonitoringIntervals(0, 0, 0)
+        domapp.resetMonitorBuffer()
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        setDefaultDACs(domapp)
+        setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
+        setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
+        domapp.setTriggerMode(2)
+        domapp.setPulser(mode=BEACON, rate=200)
+        # disable supernova data generation
+        # to test an error from domapp
+        domapp.disableSN()
+        domapp.startRun()
+
+        try:
+            domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
+                
+            try:
+                result_dict = domapp.getInterval()
+                self.fail("Did not get a MessagingException")
+            except MessagingException, e:
+                msg = e.msg
+                if len(msg)>=8:
+                    mt, mst, mlen, tmp, id, status = unpack('>BBHHBB', msg)
+                    if status!=0xc0:
+                        self.fail('Expected a status of 0xc0')
+                else:
+                    raise e
+        finally:
+            domapp.endRun()
+
+
+        domapp.setMonitoringIntervals(0, 0, 0)
+        domapp.resetMonitorBuffer()
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        setDefaultDACs(domapp)
+        setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
+        setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
+        domapp.setTriggerMode(2)
+        domapp.setPulser(mode=BEACON, rate=200)
+        # disable supernova data generation
+        # to test an error from domapp
+        domapp.enableSN(6400, 0)
+        domapp.startRun()
+
+        try:
+            domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
+                
+            try:
+                result_dict = domapp.getInterval()
+
+                # test that getinterval returned the expected
+                # number of moni and supernova packets
+                if (result_dict['moni_count']!=1):
+                    self.fail("Expected 1 moni message got %d for c/p/d: %s/%s/%s" % \
+                              result_dict['moni_count'],
+                              result_dict['card'],
+                              result_dict['pair'],
+                              result_dict['dom'])
+
+                if (result_dict['sn_count']!=1):
+                    self.fail("Expected 1 sn message got %d for c/p/d: %s/%s/%s" % \
+                              result_dict['sn_count'],
+                              result_dict['card'],
+                              result_dict['pair'],
+                              result_dict['dom'])
+                return 
+            except Exception, e:
+                print "fail: ", e
+                self.fail(exc_string())
+        finally:
+            domapp.endRun()
+            
 
 class FlasherTest(DOMAppTest):
     def __init__(self, card, wire, dom, dor, abSelect='A'):
@@ -2654,7 +2735,8 @@ def main():
                         FRecordsLcTypePrepTest,
                         LBMBufferSizeTest,
                         LBMOverflowTest,
-                        DomappUnitTests])
+                        DomappUnitTests,
+                        GetIntervalTest])
 
     if opt.doPowerTests:
         ListOfTests.extend([DomappPowerCycle,
@@ -2673,13 +2755,13 @@ def main():
                             SPEScalerNotZeroTest, SNDeltaSPEHitTest,
                             SLCOnlyHVTest, FADCHistoTest, 
                             ATWDHistoTest, HLCFRecordsTest, SLCFRecordsTest])
-    # Post-domapp tests
+   # Post-domapp tests
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,
                         EchoTest,
                         EchoCommResetTest,
                         EchoToIceboot])
-
+        
     try:
         dor = Driver()
         dor.enable_blocking(0)
@@ -2691,7 +2773,8 @@ def main():
     if opt.uploadApp and not exists(opt.uploadApp):
         print "File %s does not exist!" % opt.uploadApp
         raise SystemExit
-    
+
+
     testSet = TestingSet(domDict, doOnly=opt.doOnly, domappOnly=opt.domappOnly,
                          stopOnFail=opt.stopFail, useDomapp=opt.uploadApp)
 
