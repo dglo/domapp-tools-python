@@ -1741,6 +1741,8 @@ class PedestalMonitoringTest(TimedDOMAppTest):
         self.atwd_norm = [[[0 for bin in range(128)] for chan in range(3)] for chip in 0, 1]
         self.atwd_sums = [[[0 for bin in range(128)] for chan in range(3)] for chip in 0, 1]
         self.totalBeaconHits = 0
+        self.contaminated = False
+        self.contaminatedTrials = 0
         TimedDOMAppTest.prepDomapp(self, domapp)
         # Superclass DAC settings don't work for SPTS ichub21 00a,
         # need to tweak SPE threshold or we saturate w/ fake SPEs:
@@ -1770,7 +1772,18 @@ class PedestalMonitoringTest(TimedDOMAppTest):
                         if bias_wanted != bias_found:
                             self.fail("Expected programmed bias %d, got %d!!!" % \
                                       (bias_wanted, bias_found))
+                    continue
 
+                s = search('pedestal average contaminated.*trial (\d+)', m)
+                if s:
+                    self.contaminatedTrials = int(s.group(1))
+                    continue
+
+                s = search('continuing with possibly light-contaminated pedestal', m)
+                if s:
+                    self.contaminated = True
+                    continue
+                
         except Exception, e:
             self.fail(exc_string())
             self.appendMoni(domapp)
@@ -1936,7 +1949,28 @@ class PedestalPrescanTest(PedestalSetBiasTest):
         self._biases = set_bias
         domapp.collectPedestals(10, 10, 20, set_bias)
 
-    
+class PedestalContaminationTest(PedestalSetBiasTest):
+    """
+    Test that pedestals are not light-contaminated (or that the
+    light-contamination code is not overzealous), by watching for
+    monitoring messages tracking the contamination status.
+    """
+    def do_peds(self, domapp):
+        set_bias = {'atwd0': [600,600,600],
+                    'atwd1': [600,600,600]}
+        self._biases = set_bias
+        domapp.collectPedestals(10, 10, 20, set_bias)
+
+    def finalCheck(self):
+        if not self._biases:
+            return
+        if self.totalBeaconHits < 1:
+            self.fail("Got no waveform data!!!")
+        if self.contaminated or (self.contaminatedTrials > 2):
+            self.fail("Pedestal was contaminated after %d trials!" % (self.contaminatedTrials))
+        
+        self.summary += "%d trial(s)" % (self.contaminatedTrials+1)
+        
 class DeltaCompressionBeaconTest(DOMAppTest):
     """
     Make sure delta-compressed beacons have all four ATWD channels read out
@@ -2727,6 +2761,7 @@ def main():
                         MessageSizePulserTest,
                         PedestalMonitoringTest,
                         PedestalSetBiasTest,
+                        PedestalContaminationTest,
                         NoHVPedestalStabilityTest,
                         ScalerDeadtimePulserTest,
                         SNTest,
