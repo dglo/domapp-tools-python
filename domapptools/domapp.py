@@ -169,7 +169,8 @@ class DOMApp:
         self.dom = dom
         self.blksize = int(file(os.path.join(DRIVER_ROOT, "bufsiz")).read(100))
         self.fd = fd
-        
+        self.snrequested = False
+
     def __del__(self):
         pass
 
@@ -280,6 +281,7 @@ class DOMApp:
                 data_count = data_count + 1
             elif mesg_type==3 and mesg_subtype==12:
                 moni_count = moni_count + 1
+                done = not self.snrequested
             elif mesg_type==3 and mesg_subtype==28:
                 sn_count = sn_count + 1
                 done = True
@@ -392,6 +394,7 @@ class DOMApp:
           - mode : 0 = SPE, 1 = MPE
         Note that this *must* be called prior to EXPCONTROL_BEGIN_RUN
         """
+        self.snrequested = True
         self.sendMsg(DOM_SLOW_CONTROL, DSC_ENABLE_SN,
                      data=pack(">ib", deadtime, mode)
                      )
@@ -417,6 +420,7 @@ class DOMApp:
                          )
             
     def disableSN(self):
+        self.snrequested = False
         self.sendMsg(DOM_SLOW_CONTROL, DSC_DISABLE_SN)
         
     def configureChargeStamp(self, type="fadc", channelSel=None):

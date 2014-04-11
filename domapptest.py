@@ -656,29 +656,37 @@ class GetIntervalTest(DOMAppTest):
         setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
         setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
         domapp.setTriggerMode(2)
-        domapp.setPulser(mode=BEACON, rate=200)
-        # disable supernova data generation
-        # to test an error from domapp
+        domapp.setPulser(mode=BEACON, rate=200)        
+
+        # Test 1: SN disabled
         domapp.disableSN()
         domapp.startRun()
-
         try:
             domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
                 
             try:
                 result_dict = domapp.getInterval()
-                self.fail("Did not get a MessagingException")
-            except MessagingException, e:
-                msg = e.msg
-                if len(msg)>=8:
-                    mt, mst, mlen, tmp, id, status = unpack('>BBHHBB', msg)
-                    if status!=0xc0:
-                        self.fail('Expected a status of 0xc0')
-                else:
-                    raise e
+                # test that getinterval returned the expected
+                # number of moni and supernova packets
+                if (result_dict['moni_count']!=1):
+                    self.fail("Expected 1 moni message got %d for c/p/d: %s/%s/%s" % \
+                              result_dict['moni_count'],
+                              result_dict['card'],
+                              result_dict['pair'],
+                              result_dict['dom'])
+
+                if (result_dict['sn_count']!=0):
+                    self.fail("Expected 0 sn messages got %d for c/p/d: %s/%s/%s" % \
+                              result_dict['sn_count'],
+                              result_dict['card'],
+                              result_dict['pair'],
+                              result_dict['dom'])
+                return 
+            except Exception, e:
+                print "fail: ", e
+                self.fail(exc_string())
         finally:
             domapp.endRun()
-
 
         domapp.setMonitoringIntervals(0, 0, 0)
         domapp.resetMonitorBuffer()
@@ -689,11 +697,10 @@ class GetIntervalTest(DOMAppTest):
         setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
         domapp.setTriggerMode(2)
         domapp.setPulser(mode=BEACON, rate=200)
-        # disable supernova data generation
-        # to test an error from domapp
+
+        # Test 2: SN enabled
         domapp.enableSN(6400, 0)
         domapp.startRun()
-
         try:
             domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
                 
