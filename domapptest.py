@@ -2416,6 +2416,8 @@ class LBMOverflowTest(TimedDOMAppTest):
         for msg in moni:
             wr, rd = lbm_moni_warning_pointers(msg)
             if wr is not None and rd is not None:
+                # Check that we didn't already send this LBM overflow alert
+                assert(not found_initial_warning)
                 found_initial_warning = True
                 assert(rd == 0)
         assert(found_initial_warning)
