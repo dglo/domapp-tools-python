@@ -891,6 +891,11 @@ def unpackMoni(monidata):
             vals = [str(i) for i in vals]
             txt = " ".join(vals)
             yield "[HW EVT %s]" % txt
+        if moniType == 0xC9:
+            vals = unpack('>B3xIH2xIIH2xH8B2xII', monidata[10:moniLen])
+            vals = [str(i) for i in vals]
+            txt = " ".join(vals)
+            yield "[CONFIG %s]" % txt
         if moniType == 0xCA:
             kind,    = unpack('b', monidata[10])
             subkind, = unpack('b', monidata[11])
@@ -1138,7 +1143,7 @@ class SPEScalerNotZeroTest(DOMAppHVTest):
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)
             domapp.setLC(mode=0)
-            domapp.startRun()            
+            domapp.startRun()          
             domapp.setMonitoringIntervals(hwInt=1, fastInt=1)
             t = MiniTimer(self.runLength*1000)
             fastVirgin  = True
