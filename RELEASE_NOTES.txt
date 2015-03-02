@@ -1,4 +1,6 @@
 NEXT:
+0007207: Add decoding of configuration moni messages
+0007206: LBM overflow double-counting
 0005065: test interval query
 ===============
 0005407: Implement rigorous test on setting of baseline average
