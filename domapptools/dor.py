@@ -81,13 +81,11 @@ class Driver:
         self.root = root
         f = file(os.path.join(self.root, "revision"))
         revstr = f.read()
-        grp = re.search('^(\S+).+?\$\Revision:\s*(\S+)\s*\$', revstr)
+        grp = re.search('^(\S+)', revstr)
         if grp == None:
             self.version = None
-            self.release = None
         else:
-            self.release = grp.group(1)
-            self.version = grp.group(2)
+            self.version = grp.group(1)
         self.scan()
 
     def __getitem__(self, key):
