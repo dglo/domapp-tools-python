@@ -1,4 +1,5 @@
 NEXT:
+0007457: domapptest: test that we are sending minimal number of channels in delta-compressed waveforms
 0007207: Add decoding of configuration moni messages
 0007206: LBM overflow double-counting
 0005065: test interval query

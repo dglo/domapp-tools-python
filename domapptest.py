@@ -2045,6 +2045,71 @@ class DeltaCompressionBeaconTest(DOMAppTest):
         if not gotData:
             self.fail("Didn't get any hit data!")
 
+class DeltaCompressionChannelTest(DOMAppTest):
+    """
+    Make sure SPE-size delta-compressed hits only have one channel read out
+    """
+    def run(self, fd):
+        domapp = DOMApp(self.card, self.wire, self.dom, fd)
+        try:
+            domapp.resetMonitorBuffer()
+            setDefaultDACs(domapp)
+            domapp.setTriggerMode(2)
+            setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 500)
+            setDAC(domapp, DAC_SINGLE_SPE_THRESH, 575)
+            domapp.setPulser(mode=FE_PULSER, rate=100)
+            domapp.selectMUX(255)
+            domapp.setMonitoringIntervals()
+            # Set delta compression format
+            domapp.setDataFormat(2)
+            domapp.setCompressionMode(2)
+            domapp.setLC(mode=0)
+            domapp.startRun()
+        # fixme - collect moni for ALL failures
+        except Exception, e:
+            self.fail(exc_string())
+            self.appendMoni(domapp)
+            return
+
+        # collect data
+        t = MiniTimer(self.runLength * 1000)
+        gotData = False
+        while not t.expired():
+            self.appendMoni(domapp)
+
+            # Fetch hit data
+            good = True
+            try:
+                hitdata = domapp.getWaveformData()
+                if len(hitdata) > 0:
+                    gotData = True
+                    hitBuf = DeltaHitBuf(hitdata)
+                    for hit in hitBuf.next():
+                        if not hit.is_beacon and hit.natwdch > 1:
+                            self.debugMsgs.append("SPE hit has %d readouts!!!" % (hit.natwdch))
+                            self.debugMsgs.append(`hit`)
+                            good = False
+                            break
+            except Exception, e:
+                self.fail("GET WAVEFORM DATA FAILED: %s" % exc_string())
+                self.appendMoni(domapp)
+                break
+            
+            if not good:
+                self.fail("No hit data was retrieved!")
+                break
+
+        # end run
+        try:
+            domapp.endRun()
+        except Exception, e:
+            self.fail("END RUN FAILED: %s" % exc_string())
+            self.appendMoni(domapp)
+            
+        # Make sure we got SOMETHING....
+        if not gotData:
+            self.fail("Didn't get any hit data!")
+
 class SLCEngineeringFormatTest(DOMAppTest):
     """
     Disallow SLC when engineering format is set
@@ -2769,6 +2834,7 @@ def main():
                         ATWDBothTest,
                         MinimumBiasTest,
                         DeltaCompressionBeaconTest,
+                        DeltaCompressionChannelTest,
                         DOMIDTest,
                         IdleCounterTest,
                         GetDomappRelease,
@@ -2861,7 +2927,7 @@ def main():
 
     if not opt.doQuiet:
         print "domapp-tools-python revision: %s" % revTxt
-        print "dor-driver release: %s" % dor.release
+        print "dor-driver version: %s" % dor.version
     
     testSet.go(opt.doQuiet, opt.nCycles)
     print testSet.summary()
