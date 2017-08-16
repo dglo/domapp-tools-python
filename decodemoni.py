@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-
+# 
 # decodemoni.py
 #
 # Decode and print a .moni monitoring stream output file
@@ -26,13 +26,17 @@ parser.add_option("-d", "--domhub",
                   dest="hub", action="store_true", default=False,
                   help="Decode moni file from direct DOMHub output")
 
+parser.add_option("-m", "--mbid",
+                  dest="mbid", type="string", default=None,
+                  help="Dump output only for DOM with specified mainboard ID")
+
 (options, args) = parser.parse_args()
 if len(args) < 1:
     parser.error("must specify at least one input moni file")
 
 if (options.payload and options.hub):
     parser.error("can't specify both payload and hub formats; choose one or none (default is StringHub .moni format)")
-    
+
 #---------------------------------------------------------------
 for filename in args:
     try:
@@ -53,7 +57,8 @@ for filename in args:
     if xroot:        
         for dom in xroot.keys():
             for m in xroot[dom]:
-                print m
+                if not hasattr(m, 'domid') or (options.mbid is None) or (m.domid == options.mbid):
+                    print m
     else:
         print "Error: coudln't parse monitoring stream in file",filename
 

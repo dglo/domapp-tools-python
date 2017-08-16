@@ -1,4 +1,9 @@
-NEXT:
+V00-02-12 2017-08-16 John Kelley jkelley@icecube.wisc.edu
+0008218: decodemoni.py: Add flag to select a particular DOM
+
+==============================================================
+
+V00-02-11 2015-01-15 John Kelley jkelley@icecube.wisc.edu
 0007457: domapptest: test that we are sending minimal number of channels in delta-compressed waveforms
 0007207: Add decoding of configuration moni messages
 0007206: LBM overflow double-counting
