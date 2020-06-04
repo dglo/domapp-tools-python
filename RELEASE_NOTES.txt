@@ -1,3 +1,9 @@
+
+TBD next release
+0008808: domapptools: add support for domapp extended mode slow control messages
+
+==============================================================
+
 V00-02-12 2017-08-16 John Kelley jkelley@icecube.wisc.edu
 0008218: decodemoni.py: Add flag to select a particular DOM
 

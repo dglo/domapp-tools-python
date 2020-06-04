@@ -53,6 +53,17 @@ DSC_ENABLE_SN                   = 59
 DSC_DISABLE_SN                  = 60
 DSC_SET_CHARGE_STAMP_TYPE       = 61
 DSC_SELECT_MINBIAS              = 62
+DSC_SET_SELF_LC_MODE            = 63
+DSC_GET_SELF_LC_MODE            = 64
+DSC_SET_SELF_LC_WINDOW          = 65
+DSC_GET_SELF_LC_WINDOW          = 66
+DSC_SET_ALT_TRIG_MODE           = 67
+DSC_GET_ALT_TRIG_MODE           = 68
+DSC_SET_DAQ_MODE                = 69
+DSC_GET_DAQ_MODE                = 70
+DSC_SET_MB_LED_ON               = 71
+DSC_SET_MB_LED_OFF              = 72
+DSC_MB_LED_RUNNING              = 73
 
 # DATA_ACCESS message
 DATA_ACC_GET_DATA               = 11
@@ -111,7 +122,23 @@ DAC_MUX_BIAS                    = 15
 # Pulser modes
 FE_PULSER  = 1
 BEACON     = 2
+MB_LED     = 3
 
+# Trigger modes
+TEST_PATTERN_TRIG_MODE  = 0
+CPU_TRIG_MODE           = 1
+SPE_DISC_TRIG_MODE      = 2
+FB_TRIG_MODE            = 3
+MPE_DISC_TRIG_MODE      = 4
+FE_PULSER_TRIG_MODE     = 5
+MB_LED_TRIG_MODE        = 6
+LC_UP_TRIG_MODE         = 7
+LC_DOWN_TRIG_MODE       = 8
+
+# DAQ modes
+DAQ_MODE_ATWD_FADC = 0
+DAQ_MODE_FADC      = 1
+DAQ_MODE_TS        = 2
 
 DRIVER_ROOT = "/proc/driver/domhub"
 
@@ -380,12 +407,20 @@ class DOMApp:
     def setTriggerMode(self, mode):
         """
         Set the DOM triggering mode
-          mode = 0: test pattern data
-          mode = 1: forced triggers
-          mode = 2: discriminator triggers (SPE)
-          mode = 3: flasher board triggers
         """
         self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_TRIG_MODE, data=pack('b', mode))
+
+    def setAltTriggerMode(self, mode):
+        """
+        Set an alternate (additional) DOM triggering mode (extended mode only)
+        """
+        self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_ALT_TRIG_MODE, data=pack('b', mode))
+
+    def setDAQMode(self, mode):
+        """
+        Set the DAQ mode (extended mode only)
+        """
+        self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_DAQ_MODE, data=pack('b', mode))
 
     def enableSN(self, deadtime, mode):
         """
@@ -402,18 +437,25 @@ class DOMApp:
     def setPulser(self, mode, rate=None):
         """
         Setup the onboard DOM pulser used for controlling heartbeats,
-        electronic pulses, and the flasherboard pulse rate.
+        electronic pulses, and the mainboard LED pulse rate.  Can
+        call multiple times to enable both pulser and mainboard LED.
+        Only a single rate is supported by the DOM, so the most recent
+        rate setting will be used.
         Arguments:
            mode = FE_PULSER : disables heartbeats and enables the
-                  analog pulser,
-                = BEACON : disables analog pulser and enables
+                  analog FE pulser
+                = MB_LED : disables heartbeats and enables mainboard LED
+                = BEACON : disables FE pulser and MB LED and enables
                   the heartbeat pulser
            rate = rate in Hz (roughly)
            """
         if mode == FE_PULSER:
             self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_PULSER_ON)
+        elif mode == MB_LED:
+            self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_MB_LED_ON)
         elif mode == BEACON:
             self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_PULSER_OFF)
+            self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_MB_LED_OFF)
         if rate is not None:
             self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_PULSER_RATE,
                          data=pack(">H", rate)
