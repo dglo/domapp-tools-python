@@ -140,6 +140,11 @@ DAQ_MODE_ATWD_FADC = 0
 DAQ_MODE_FADC      = 1
 DAQ_MODE_TS        = 2
 
+# Self-LC modes
+SELF_LC_MODE_NONE = 0
+SELF_LC_MODE_SPE  = 1
+SELF_LC_MODE_MPE  = 2
+
 DRIVER_ROOT = "/proc/driver/domhub"
 
 _atwdMask = { 1 : { 0 : 0, 16 : 9, 32 : 1, 64 : 5, 128 : 13 },
@@ -370,7 +375,8 @@ class DOMApp:
         """
         Set data format
         fmt = 0: engineering format
-        fmt = 1: default compression
+        fmt = 1: regular format
+        fmt = 2: delta format
         """
         self.sendMsg(DATA_ACCESS, DATA_ACC_SET_DATA_FORMAT, data=pack('b', fmt))
 
@@ -378,13 +384,14 @@ class DOMApp:
         """
         Set compression mode
         mode = 0: none (default)
-        mode = 1: compressed data (delta compression)
+        mode = 1: regular compressed data
+        mode = 2: delta compressed data
         """
         self.sendMsg(DATA_ACCESS, DATA_ACC_SET_COMP_MODE, data=pack('b', mode))
 
     def selectAtwd(self, mode):
         """
-        Set compression mode
+        Select which ATWD(s) to use
         mode = 0: ATWD A
         mode = 1: ATWD B
         mode = 2: both
@@ -640,7 +647,17 @@ class DOMApp:
                                    lc_opts['cablelen'][6],
                                    lc_opts['cablelen'][7]
                                    ))
-           
+
+    def setSelfLC(self, mode=SELF_LC_MODE_NONE, window=100):
+        """
+        Set up self local-coincidence, where the DOM can self-satisfy LC
+        on e.g. a large signal.
+          mode: none, SPE discriminatator, or MPE discriminator
+          window: length of LC acceptance window in ns
+        """
+        self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_SELF_LC_MODE, data=pack("B", mode))
+        self.sendMsg(DOM_SLOW_CONTROL, DSC_SET_SELF_LC_WINDOW, data=pack(">i", window))        
+
     def selectMUX(self, mux):
         """
         Select the multiplexer input channel

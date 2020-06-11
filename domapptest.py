@@ -540,7 +540,7 @@ class ChargeStampHistoTest(DOMAppHVTest):
             domapp.setCompressionMode(2)
             self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
             domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 550)
-            domapp.setTriggerMode(2)
+            domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
             domapp.setLC(mode=0)
             domapp.setPulser(mode=BEACON, rate=4)
 
@@ -655,7 +655,7 @@ class GetIntervalTest(DOMAppTest):
         setDefaultDACs(domapp)
         setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
         setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
-        domapp.setTriggerMode(2)
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
         domapp.setPulser(mode=BEACON, rate=200)        
 
         # Test 1: SN disabled
@@ -695,7 +695,7 @@ class GetIntervalTest(DOMAppTest):
         setDefaultDACs(domapp)
         setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
         setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
-        domapp.setTriggerMode(2)
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
         domapp.setPulser(mode=BEACON, rate=200)
 
         # Test 2: SN enabled
@@ -820,7 +820,7 @@ class FlasherTest(DOMAppTest):
             setDefaultDACs(domapp)
             setDAC(domapp, DAC_FLASHER_REF, 450)
             domapp.collectPedestals(100, 100, 200)
-            domapp.setTriggerMode(3)
+            domapp.setTriggerMode(FB_TRIG_MODE)
             domapp.setEngFormat(0, 4*(2,), (128, 0, 0, 128))
             domapp.setCompressionMode(0)
             domapp.setDataFormat(0)
@@ -935,6 +935,12 @@ def getLastMoniMsgs(domapp):
         ret.append("GET MONI DATA FAILED: %s" % exc_string())
     return ret
 
+def setDomappExtendedMode(domapp, extended):
+    """
+    Enable extended-mode functionality
+    """    
+    # FIX ME: this must do something eventually
+    return
 
 ################################### SPECIFIC TESTS ###############################
 
@@ -1008,7 +1014,7 @@ class IdleCounterTest(DOMAppTest):
             domapp.selectMUX(255)
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)
-            domapp.setTriggerMode(2)
+            domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
             domapp.setPulser(mode=FE_PULSER, rate=200)
             domapp.setLC(mode=0)
             domapp.startRun()
@@ -1052,7 +1058,7 @@ class ScalerDeadtimePulserTest(DOMAppTest):
             setDefaultDACs(domapp)
             setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
             setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
-            domapp.setTriggerMode(2)
+            domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
             domapp.setPulser(mode=FE_PULSER, rate=100)
             domapp.setCompressionMode(0)            
             domapp.startRun()
@@ -1094,7 +1100,7 @@ class MessageSizePulserTest(DOMAppTest):
             setDefaultDACs(domapp)
             setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
             setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
-            domapp.setTriggerMode(2)
+            domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
             domapp.setPulser(mode=FE_PULSER, rate=8000)
             domapp.setDataFormat(2)
             domapp.setCompressionMode(2)
@@ -1136,7 +1142,7 @@ class SPEScalerNotZeroTest(DOMAppHVTest):
             domapp.setMonitoringIntervals(0, 0, 0)
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
-            domapp.setTriggerMode(2)
+            domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
             domapp.selectMUX(255)
             self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
             domapp.setPulser(mode=BEACON, rate=4)
@@ -1219,7 +1225,7 @@ class FastMoniTestHV(DOMAppHVTest):
             domapp.setMonitoringIntervals(0, 0, 0)
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
-            domapp.setTriggerMode(2)
+            domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
             domapp.setPulser(mode=BEACON, rate=4)
             self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
             domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 550)
@@ -1344,7 +1350,7 @@ class SLCOnlyTest(DOMAppTest):
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
-            domapp.setTriggerMode(2)
+            domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
             domapp.selectMUX(255)
             if doHV:
                 self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
@@ -1423,7 +1429,7 @@ class SNDeltaSPEHitTest(DOMAppHVTest):
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
-            domapp.setTriggerMode(2)
+            domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
             domapp.selectMUX(255)
             domapp.setMonitoringIntervals()
             self.setHV(domapp, DOMAppHVTest.nominalHVVolts)
@@ -1600,7 +1606,7 @@ class FADCClockPollutionTest(TimedDOMAppTest):
         FADC_PEDS_PER_LOOP = 200
         MAX_ALLOWED_RMS = 1.0
         numloops = 100
-        domapp.setTriggerMode(2)
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
         domapp.selectMUX(255)
         # Do the collection
         domapp.collectPedestals(ATWD_PEDS_PER_LOOP,
@@ -1654,7 +1660,7 @@ class PedestalStabilityTest(TimedDOMAppTest):
         FADC_PEDS_PER_LOOP = 200
         MAX_ALLOWED_RMS    = 1.0
         numloops           = 100
-        domapp.setTriggerMode(2)
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
         domapp.selectMUX(255)
 
         ### Collect pedestals N times
@@ -1759,7 +1765,7 @@ class PedestalMonitoringTest(TimedDOMAppTest):
         # Superclass DAC settings don't work for SPTS ichub21 00a,
         # need to tweak SPE threshold or we saturate w/ fake SPEs:
         setDAC(domapp, DAC_SINGLE_SPE_THRESH, 300)  
-        domapp.setTriggerMode(2)            
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)            
         domapp.setPulser(mode=BEACON, rate=100)
         domapp.setDataFormat(0)
         domapp.setCompressionMode(0)
@@ -1992,7 +1998,7 @@ class DeltaCompressionBeaconTest(DOMAppTest):
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
-            domapp.setTriggerMode(2)
+            domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
             domapp.setPulser(mode=BEACON, rate=100)
             domapp.selectMUX(255)
             domapp.setMonitoringIntervals()
@@ -2054,7 +2060,7 @@ class DeltaCompressionChannelTest(DOMAppTest):
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
-            domapp.setTriggerMode(2)
+            domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
             setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 500)
             setDAC(domapp, DAC_SINGLE_SPE_THRESH, 575)
             domapp.setPulser(mode=FE_PULSER, rate=100)
@@ -2159,7 +2165,7 @@ class SNTest(DOMAppTest):
         try:
             domapp.resetMonitorBuffer()
             setDefaultDACs(domapp)
-            domapp.setTriggerMode(2)
+            domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
             domapp.setPulser(mode=FE_PULSER, rate=100)
             domapp.selectMUX(255)
             domapp.setEngFormat(0, 4*(2,), (32, 0, 0, 0))
@@ -2224,15 +2230,16 @@ class MinimumBiasTest(TimedDOMAppTest):
         domapp.setDataFormat(2)
         domapp.setCompressionMode(2)
         setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
-        domapp.setTriggerMode(2)
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
         domapp.setPulser(mode=FE_PULSER, rate=8000)
         domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 650)
         domapp.setLC(mode=1, type=2, source=0, span=1, window=(25,25)) # Set min. window, to get fewer hits
         domapp.enableMinbias()
 
-    def cleanupDomapp(self, domapp):
+    def cleanup(self, domapp):
         domapp.disableMinbias()
-        
+        TimedDOMAppTest.cleanup(self, domapp)
+
     def interval(self, domapp):
         hitdata = domapp.getWaveformData()
         if len(hitdata) > 0:
@@ -2262,7 +2269,7 @@ class ATWDSelectTest(TimedDOMAppTest):
         TimedDOMAppTest.prepDomapp(self, domapp)
         setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
         setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
-        domapp.setTriggerMode(2)
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
         domapp.setPulser(mode=FE_PULSER, rate=8000)
         domapp.setDataFormat(2)
         domapp.setCompressionMode(2)
@@ -2280,9 +2287,9 @@ class ATWDSelectTest(TimedDOMAppTest):
                     self.hadAtwdB = True
         return False # Don't abort early
 
-    def cleanupDomapp(self, domapp):
+    def cleanup(self, domapp):
         domapp.selectAtwd(2)
-        TimedDOMAppTest.cleanup(self)
+        TimedDOMAppTest.cleanup(self, domapp)
 
     def finalCheck(self):
         if not self.hadData:
@@ -2382,7 +2389,7 @@ class LCFRecordsTest(TimedDOMAppTest):
         domapp.writeDAC(DAC_SINGLE_SPE_THRESH, 500)            
         domapp.setDataFormat(2)
         domapp.setCompressionMode(2)
-        domapp.setTriggerMode(2)
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
         domapp.setLC(mode=1, type=1, source=0, span=1)
                     
     def interval(self, domapp):
@@ -2451,7 +2458,7 @@ class LBMOverflowTest(TimedDOMAppTest):
         TimedDOMAppTest.prepDomapp(self, domapp)
         domapp.setDataFormat(2)
         domapp.setCompressionMode(2)
-        domapp.setTriggerMode(2)            
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)            
         domapp.setPulser(mode=BEACON, rate=40000)
         self.had_wf = False
 
@@ -2531,6 +2538,185 @@ class LBMOverflowTest(TimedDOMAppTest):
     def finalCheck(self):
         if not self.had_wf:
             self.fail("No waveform data received!!!")
+
+class FADCDAQModeTest(TimedDOMAppTest):
+    """
+    Test that FADC-only DAQ mode works, if extended mode functionality enabled
+    """
+    def prepDomapp(self, domapp):
+        self.hadData  = False
+        self.missingFadc = False
+        self.hadAtwd = False
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
+        setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
+        setDomappExtendedMode(domapp, True)
+        domapp.setDAQMode(DAQ_MODE_FADC)
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
+        domapp.setPulser(mode=FE_PULSER, rate=200)
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.setLC(mode=0) # Make sure no LC is required
+        
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            self.hadData = True
+            hitBuf = DeltaHitBuf(hitdata)
+            for hit in hitBuf.next():
+                self.hadAtwd = self.hadAtwd or hit.atwd_avail
+                self.missingFadc = self.missingFadc or not hit.fadc_avail
+        return False # Don't abort early
+
+    def cleanup(self, domapp):
+        domapp.setDAQMode(DAQ_MODE_ATWD_FADC)
+        setDomappExtendedMode(domapp, False)
+        TimedDOMAppTest.cleanup(self, domapp)
+
+    def finalCheck(self):
+        if not self.hadData:
+            self.fail("Got no waveform data!")
+        if self.hadAtwd:
+            self.fail("Got ATWD data in FADC-only DAQ mode!")
+        if self.missingFadc:
+            self.fail("Missing FADC data in FADC-only DAQ mode!")
+
+class AltTriggerModeTest(TimedDOMAppTest):
+    """
+    Test that adding an alternate trigger mode works if extended functionality enabled
+    """
+
+    targetHV = 900 # This will cause HV to get turned on!
+
+    def prepDomapp(self, domapp):
+        self.hadData  = False
+        self.trigCnt = 0
+        self.altTrigCnt = 0
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
+        setDAC(domapp, DAC_SINGLE_SPE_THRESH, 575)
+        setDomappExtendedMode(domapp, True)
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
+        domapp.setAltTriggerMode(FE_PULSER_TRIG_MODE)
+        domapp.setPulser(mode=FE_PULSER, rate=20)
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.setLC(mode=0) # Make sure no LC is required
+        
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            self.hadData = True
+            hitBuf = DeltaHitBuf(hitdata)
+            for hit in hitBuf.next():
+                # Check that we are getting FE pulser triggers and disc triggers
+                if (hit.trigger & 0x8 != 0):
+                    self.altTrigCnt += 1
+                if (hit.trigger & ~0x8 != 0):
+                    self.trigCnt += 1
+        return False # Don't abort early
+
+    def cleanup(self, domapp):
+        domapp.setAltTriggerMode(CPU_TRIG_MODE)
+        setDomappExtendedMode(domapp, False)
+        TimedDOMAppTest.cleanup(self, domapp)
+
+    def finalCheck(self):
+        if not self.hadData:
+            self.fail("Got no waveform data!")
+        # Exact count not important
+        if (self.trigCnt < 10) or (self.altTrigCnt < 20):
+            self.fail("Missing triggers: trig cnt %d alt trig cnt %d" % \
+                      (self.trigCnt, self.altTrigCnt))
+
+class MainboardLEDTest(TimedDOMAppTest):
+    """
+    Test that mainboard LED can be used with the HV on in extended mode
+    """
+
+    targetHV = 800 # This will cause HV to get turned on!
+
+    def prepDomapp(self, domapp):
+        self.hadData  = False
+        self.trigCnt = 0
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        setDAC(domapp, DAC_LED_BRIGHTNESS, 0) # LED brightness maximum
+        setDAC(domapp, DAC_SINGLE_SPE_THRESH, 900)
+        setDomappExtendedMode(domapp, True)
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
+        domapp.setAltTriggerMode(CPU_TRIG_MODE)
+        domapp.setPulser(mode=MB_LED, rate=20)
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.setLC(mode=0) # Make sure no LC is required
+        
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            self.hadData = True
+            hitBuf = DeltaHitBuf(hitdata)
+            for hit in hitBuf.next():
+                # We should be getting many MPE hits
+                if (hit.trigger & 0x2):
+                    self.trigCnt += 1
+        return False # Don't abort early
+
+    def cleanup(self, domapp):
+        domapp.setPulser(mode=BEACON, rate=4)
+        setDAC(domapp, DAC_LED_BRIGHTNESS, 1023)
+        setDomappExtendedMode(domapp, False)
+        TimedDOMAppTest.cleanup(self, domapp) # Will turn the HV off
+
+    def finalCheck(self):
+        if not self.hadData:
+            self.fail("Got no waveform data!")
+        if (self.trigCnt < 50):
+            self.fail("Too few triggers: %d" % self.trigCnt)
+
+class selfLocalCoincidenceTest(TimedDOMAppTest):
+    """
+    Test self local coincidence
+    """
+
+    targetHV = 1500 # This will cause HV to get turned on!
+
+    def prepDomapp(self, domapp):
+        self.hadData  = False
+        self.selfLCcnt = 0
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        setDAC(domapp, DAC_SINGLE_SPE_THRESH, 550)
+        setDAC(domapp, DAC_MULTIPLE_SPE_THRESH, 650)
+        domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
+        domapp.setPulser(mode=BEACON, rate=4)
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.configureChargeStamp()
+        # soft LC, make sure no Tx to avoid self-reflections
+        domapp.setLC(mode=1, type=1, transmit=0, window=(1000,1000)) 
+        # Enable self-LC on second SPE disc within 200 ns
+        domapp.setSelfLC(mode=SELF_LC_MODE_SPE, window=200)
+        
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            self.hadData = True
+            hitBuf = DeltaHitBuf(hitdata)
+            for hit in hitBuf.next():
+                # Check for disc triggers that have no LC but full waveforms
+                # The initial disc crossing will NOT trigger self-LC
+                if hit.is_spe and hit.atwd_avail:
+                    self.selfLCcnt += 1
+        return False # Don't abort early
+
+    def cleanup(self, domapp):
+        domapp.setSelfLC(mode=SELF_LC_MODE_NONE)
+        TimedDOMAppTest.cleanup(self, domapp)
+
+    def finalCheck(self):
+        if not self.hadData:
+            self.fail("Got no waveform data!")
+        if self.selfLCcnt == 0:
+            self.fail("Got no self-LC events!")
 
 ################################### HIGH-LEVEL TESTING LOGIC ###############################
             
@@ -2851,7 +3037,10 @@ def main():
                         LBMBufferSizeTest,
                         LBMOverflowTest,
                         DomappUnitTests,
-                        GetIntervalTest])
+                        GetIntervalTest,
+                        FADCDAQModeTest,
+                        AltTriggerModeTest
+                        ])
 
     if opt.doPowerTests:
         ListOfTests.extend([DomappPowerCycle,
@@ -2866,10 +3055,20 @@ def main():
         raise SystemExit
     
     if opt.doHVTests:
-        ListOfTests.extend([FastMoniTestHV, PedestalStabilityTest, FADCClockPollutionTest,
-                            SPEScalerNotZeroTest, SNDeltaSPEHitTest,
-                            SLCOnlyHVTest, FADCHistoTest, 
-                            ATWDHistoTest, HLCFRecordsTest, SLCFRecordsTest])
+        ListOfTests.extend([FastMoniTestHV, 
+                            PedestalStabilityTest,
+                            FADCClockPollutionTest,
+                            SPEScalerNotZeroTest,
+                            SNDeltaSPEHitTest,
+                            SLCOnlyHVTest,
+                            FADCHistoTest, 
+                            ATWDHistoTest,
+                            HLCFRecordsTest,
+                            SLCFRecordsTest,
+                            MainboardLEDTest,
+                            selfLocalCoincidenceTest
+                            ])
+
    # Post-domapp tests
     ListOfTests.extend([DomappToIceboot,
                         IcebootToEcho,
