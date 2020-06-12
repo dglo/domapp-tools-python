@@ -935,13 +935,6 @@ def getLastMoniMsgs(domapp):
         ret.append("GET MONI DATA FAILED: %s" % exc_string())
     return ret
 
-def setDomappExtendedMode(domapp, extended):
-    """
-    Enable extended-mode functionality
-    """    
-    # FIX ME: this must do something eventually
-    return
-
 ################################### SPECIFIC TESTS ###############################
 
 
@@ -1593,6 +1586,146 @@ class TimedDOMAppTest(DOMAppHVTest):
         Final checks on data go here
         """
 
+class TimedDOMAppFlasherTest(TimedDOMAppTest):
+    """
+    Flasher test that uses TimedDOMApp base class.  Must
+    select either 'A' or 'B' DOMs
+    """
+
+    # Default flasher parameters
+    abSelect = 'A'
+    bright = 30
+    win = 30
+    delay = 0
+    mask = 0x1
+    rate = 20
+
+    def prepDomapp(self, domapp):
+        TimedDOMAppTest.prepDomapp(self, domapp)
+        if self.targetHV is None:
+            # Really make sure HV is off!
+            self.turnOffHV(domapp)
+            time.sleep(2) # Wait for HV to 'cool down'
+        domapp.setTriggerMode(FB_TRIG_MODE)
+        
+    def startRun(self, domapp):
+        """
+        Start flasher run with given parameters
+        """
+        if self.dom != self.abSelect: return # Automatically pass
+        domapp.startFBRun(self.bright, self.win, self.delay, self.mask, self.rate)
+        domapp.setMonitoringIntervals(hwInt=5, fastInt=1)
+
+
+class ExtendedFlasherHVTest(TimedDOMAppFlasherTest):
+    """
+    Test that in extended mode, we can operated low-brightness
+    single LEDs with HV on
+    """
+    targetHV = 1000
+    bright = 30
+    win = 30
+    mask = 0x2
+    rate = 20
+
+    def prepDomapp(self, domapp):
+        self.fbTrigCnt = 0
+        TimedDOMAppFlasherTest.prepDomapp(self, domapp)    
+        domapp.setExtendedMode(True)
+        domapp.setDataFormat(2)
+        domapp.setCompressionMode(2)
+        domapp.setLC(mode=0)
+
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            self.hadData = True
+            hitBuf = DeltaHitBuf(hitdata)
+            for hit in hitBuf.next():
+                if (hit.trigger & 0x20):
+                    self.fbTrigCnt += 1
+        return False # Don't abort early
+
+    def cleanup(self, domapp):
+        domapp.setAltTriggerMode(CPU_TRIG_MODE)
+        domapp.setExtendedMode(False)
+        TimedDOMAppTest.cleanup(self, domapp)
+
+    def finalCheck(self):
+        if self.fbTrigCnt < 1:
+            self.fail("Got no flasher events!!!")
+
+class ExtendedFlasherHVTestA(ExtendedFlasherHVTest):
+    abSelect = 'A'
+
+class ExtendedFlasherHVTestB(ExtendedFlasherHVTest):
+    abSelect = 'B'
+
+class FlasherHVInterlockTest(TimedDOMAppFlasherTest):
+    """
+    Test that when not in extended mode, we can't turn HV and FB on
+    """
+    targetHV = 800
+
+    def prepDomapp(self, domapp):
+        self.interlockFired = False
+        TimedDOMAppFlasherTest.prepDomapp(self, domapp)
+
+    def startRun(self, domapp):
+        # The start run message will throw an exception
+        # if the interlock works
+        try:
+            TimedDOMAppFlasherTest.startRun(self, domapp)
+        except MessagingException:
+            self.interlockFired = True
+
+    def endRun(self, domapp):
+        # The run shouldn't have started, but stop if it did
+        if not self.interlockFired:
+            domapp.endRun()
+
+    def finalCheck(self):
+        if not self.interlockFired:
+            self.fail("Flasher run started with HV on!")
+
+class FlasherHVInterlockTestA(FlasherHVInterlockTest):
+    abSelect = 'A'
+
+class FlasherHVInterlockTestB(FlasherHVInterlockTest):
+    abSelect = 'B'
+
+class FlasherSettingsInterlockTest(FlasherHVInterlockTest):
+    """
+    Test that in extended mode, brightness check will still not
+    allow run start
+    """
+    def prepDomapp(self, domapp):
+        domapp.setExtendedMode(True)
+        FlasherHVInterlockTest.prepDomapp(self, domapp)    
+
+class FlasherBrightnessInterlockTestA(FlasherSettingsInterlockTest):
+    abSelect = 'A'
+    bright = 100
+
+class FlasherBrightnessInterlockTestB(FlasherSettingsInterlockTest):
+    abSelect = 'B'
+    bright = 100
+
+class FlasherWidthInterlockTestA(FlasherSettingsInterlockTest):
+    abSelect = 'A'
+    win = 62
+
+class FlasherWidthInterlockTestB(FlasherSettingsInterlockTest):
+    abSelect = 'B'
+    win = 62
+
+class FlasherCountInterlockTestA(FlasherSettingsInterlockTest):
+    abSelect = 'A'
+    mask = 0x14
+
+class FlasherCountInterlockTestB(FlasherSettingsInterlockTest):
+    abSelect = 'B'
+    mask = 0x14
 
 class FADCClockPollutionTest(TimedDOMAppTest):
     """
@@ -2550,7 +2683,7 @@ class FADCDAQModeTest(TimedDOMAppTest):
         TimedDOMAppTest.prepDomapp(self, domapp)
         setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
         setDAC(domapp, DAC_SINGLE_SPE_THRESH, 600)
-        setDomappExtendedMode(domapp, True)
+        domapp.setExtendedMode(True)
         domapp.setDAQMode(DAQ_MODE_FADC)
         domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
         domapp.setPulser(mode=FE_PULSER, rate=200)
@@ -2570,7 +2703,7 @@ class FADCDAQModeTest(TimedDOMAppTest):
 
     def cleanup(self, domapp):
         domapp.setDAQMode(DAQ_MODE_ATWD_FADC)
-        setDomappExtendedMode(domapp, False)
+        domapp.setExtendedMode(False)
         TimedDOMAppTest.cleanup(self, domapp)
 
     def finalCheck(self):
@@ -2595,7 +2728,7 @@ class AltTriggerModeTest(TimedDOMAppTest):
         TimedDOMAppTest.prepDomapp(self, domapp)
         setDAC(domapp, DAC_INTERNAL_PULSER_AMP, 1000)
         setDAC(domapp, DAC_SINGLE_SPE_THRESH, 575)
-        setDomappExtendedMode(domapp, True)
+        domapp.setExtendedMode(True)
         domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
         domapp.setAltTriggerMode(FE_PULSER_TRIG_MODE)
         domapp.setPulser(mode=FE_PULSER, rate=20)
@@ -2618,7 +2751,7 @@ class AltTriggerModeTest(TimedDOMAppTest):
 
     def cleanup(self, domapp):
         domapp.setAltTriggerMode(CPU_TRIG_MODE)
-        setDomappExtendedMode(domapp, False)
+        domapp.setExtendedMode(False)
         TimedDOMAppTest.cleanup(self, domapp)
 
     def finalCheck(self):
@@ -2642,7 +2775,7 @@ class MainboardLEDTest(TimedDOMAppTest):
         TimedDOMAppTest.prepDomapp(self, domapp)
         setDAC(domapp, DAC_LED_BRIGHTNESS, 0) # LED brightness maximum
         setDAC(domapp, DAC_SINGLE_SPE_THRESH, 900)
-        setDomappExtendedMode(domapp, True)
+        domapp.setExtendedMode(True)
         domapp.setTriggerMode(SPE_DISC_TRIG_MODE)
         domapp.setAltTriggerMode(CPU_TRIG_MODE)
         domapp.setPulser(mode=MB_LED, rate=20)
@@ -2664,7 +2797,7 @@ class MainboardLEDTest(TimedDOMAppTest):
     def cleanup(self, domapp):
         domapp.setPulser(mode=BEACON, rate=4)
         setDAC(domapp, DAC_LED_BRIGHTNESS, 1023)
-        setDomappExtendedMode(domapp, False)
+        domapp.setExtendedMode(False)
         TimedDOMAppTest.cleanup(self, domapp) # Will turn the HV off
 
     def finalCheck(self):
@@ -3047,9 +3180,21 @@ def main():
                             PedestalPrescanTest])
 
     if opt.doFlasherTests == "A":
-        ListOfTests.extend([FlasherATest])
+        ListOfTests.extend([FlasherATest,
+                            FlasherHVInterlockTestA,
+                            ExtendedFlasherHVTestA,
+                            FlasherBrightnessInterlockTestA,
+                            FlasherWidthInterlockTestA,
+                            FlasherCountInterlockTestA,
+                            ])
     elif opt.doFlasherTests == "B":
-        ListOfTests.extend([FlasherBTest])
+        ListOfTests.extend([FlasherBTest,
+                            FlasherHVInterlockTestB,
+                            ExtendedFlasherHVTestB,
+                            FlasherBrightnessInterlockTestB,
+                            FlasherWidthInterlockTestB,
+                            FlasherCountInterlockTestB,
+                            ])
     elif opt.doFlasherTests != None:
         print "Flasher test arg must be 'A' or 'B'"
         raise SystemExit
@@ -3075,7 +3220,7 @@ def main():
                         EchoTest,
                         EchoCommResetTest,
                         EchoToIceboot])
-        
+    
     try:
         dor = Driver()
         dor.enable_blocking(0)

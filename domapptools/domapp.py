@@ -411,6 +411,13 @@ class DOMApp:
                      data=pack('>LH', interval, prescale)
                      )
     
+    def setExtendedMode(domapp, enable):
+        """
+        Enable or disable extended functionality in domapp
+        """
+        # TEMP FIX ME this needs to do something
+        return
+
     def setTriggerMode(self, mode):
         """
         Set the DOM triggering mode
