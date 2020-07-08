@@ -1661,6 +1661,41 @@ class ExtendedFlasherHVTestA(ExtendedFlasherHVTest):
 class ExtendedFlasherHVTestB(ExtendedFlasherHVTest):
     abSelect = 'B'
 
+class ExtendedFlasherAltTriggerTest(ExtendedFlasherHVTest):
+    """
+    Test that we can set multiple trigger modes in
+    extended-mode flasher runs
+    """
+    def prepDomapp(self, domapp):
+        self.fbTrigCnt = 0
+        self.speTrigCnt = 0
+        ExtendedFlasherHVTest.prepDomapp(self, domapp)    
+        domapp.setAltTriggerMode(SPE_DISC_TRIG_MODE)
+
+    def interval(self, domapp):
+        hitdata = domapp.getWaveformData()
+        if len(hitdata) > 0:
+            self.hadData = True
+            hitBuf = DeltaHitBuf(hitdata)
+            for hit in hitBuf.next():
+                if (hit.trigger & 0x20):
+                    self.fbTrigCnt += 1
+                if (hit.trigger & 0x01):
+                    self.speTrigCnt += 1
+        return False # Don't abort early
+
+    def finalCheck(self):
+        if self.fbTrigCnt < 1:
+            self.fail("Got no flasher events!!!")
+        if self.speTrigCnt < 1:
+            self.fail("Got no SPE discriminator events!!!")
+
+class ExtendedFlasherAltTriggerTestA(ExtendedFlasherAltTriggerTest):
+    abSelect = 'A'
+
+class ExtendedFlasherAltTriggerTestB(ExtendedFlasherAltTriggerTest):
+    abSelect = 'B'
+
 class FlasherHVInterlockTest(TimedDOMAppFlasherTest):
     """
     Test that when not in extended mode, we can't turn HV and FB on
@@ -3183,6 +3218,7 @@ def main():
         ListOfTests.extend([FlasherATest,
                             FlasherHVInterlockTestA,
                             ExtendedFlasherHVTestA,
+                            ExtendedFlasherAltTriggerTestA,
                             FlasherBrightnessInterlockTestA,
                             FlasherWidthInterlockTestA,
                             FlasherCountInterlockTestA,
@@ -3191,6 +3227,7 @@ def main():
         ListOfTests.extend([FlasherBTest,
                             FlasherHVInterlockTestB,
                             ExtendedFlasherHVTestB,
+                            ExtendedFlasherAltTriggerTestB,
                             FlasherBrightnessInterlockTestB,
                             FlasherWidthInterlockTestB,
                             FlasherCountInterlockTestB,
@@ -3220,7 +3257,7 @@ def main():
                         EchoTest,
                         EchoCommResetTest,
                         EchoToIceboot])
-    
+
     try:
         dor = Driver()
         dor.enable_blocking(0)
